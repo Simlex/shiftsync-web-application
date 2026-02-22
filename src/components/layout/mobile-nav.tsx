@@ -32,52 +32,108 @@ interface NavItem {
   roles: UserRole[];
 }
 
-const navItems: NavItem[] = [
-  {
-    label: "Dashboard",
-    href: ROUTES.DASHBOARD,
-    icon: LayoutDashboard,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Schedule",
-    href: ROUTES.SCHEDULE,
-    icon: Calendar,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "My Availability",
-    href: ROUTES.AVAILABILITY,
-    icon: Clock,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Swap Requests",
-    href: ROUTES.SWAPS,
-    icon: ArrowLeftRight,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Drop Requests",
-    href: ROUTES.DROPS,
-    icon: ArrowDownToLine,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Staff Management",
-    href: ROUTES.STAFF,
-    icon: Users,
-    roles: ["ADMIN", "MANAGER"],
-  },
-  {
-    label: "Request Management",
-    href: ROUTES.REQUESTS,
-    icon: ClipboardList,
-    roles: ["ADMIN", "MANAGER"],
-  },
-  { label: "Analytics", href: ROUTES.ANALYTICS, icon: BarChart3, roles: ["ADMIN"] },
-  { label: "Settings", href: ROUTES.SETTINGS, icon: Settings, roles: ["ADMIN"] },
-];
+const getDashboardNavItems = (role: UserRole): NavItem[] => {
+  const baseItems: NavItem[] = [
+    // Common items available to all roles
+    {
+      label: "My Schedule",
+      href: ROUTES.STAFF_SCHEDULE,
+      icon: Calendar,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+    {
+      label: "My Availability",
+      href: ROUTES.STAFF_AVAILABILITY,
+      icon: Clock,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+    {
+      label: "Shift Swaps",
+      href: ROUTES.STAFF_SWAPS,
+      icon: ArrowLeftRight,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+    {
+      label: "Shift Drops",
+      href: ROUTES.STAFF_DROPS,
+      icon: ArrowDownToLine,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+  ];
+
+  // Add role-specific items based on user's role
+  switch (role) {
+    case "ADMIN":
+      return [
+        {
+          label: "Dashboard",
+          href: ROUTES.ADMIN,
+          icon: LayoutDashboard,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Analytics",
+          href: ROUTES.ADMIN_ANALYTICS,
+          icon: BarChart3,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Staff Management",
+          href: ROUTES.ADMIN_STAFF,
+          icon: Users,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Schedule Management",
+          href: ROUTES.ADMIN_SCHEDULE,
+          icon: Calendar,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Request Management",
+          href: ROUTES.ADMIN_REQUESTS,
+          icon: ClipboardList,
+          roles: ["ADMIN"],
+        },
+        ...baseItems,
+      ];
+
+    case "MANAGER":
+      return [
+        {
+          label: "Dashboard",
+          href: ROUTES.MANAGER,
+          icon: LayoutDashboard,
+          roles: ["MANAGER"],
+        },
+        {
+          label: "Schedule Management",
+          href: ROUTES.MANAGER_SCHEDULE,
+          icon: Calendar,
+          roles: ["MANAGER"],
+        },
+        {
+          label: "Request Management",
+          href: ROUTES.MANAGER_REQUESTS,
+          icon: ClipboardList,
+          roles: ["MANAGER"],
+        },
+        ...baseItems,
+      ];
+
+    case "STAFF":
+    default:
+      return [
+        {
+          label: "Dashboard",
+          href: ROUTES.STAFF,
+          icon: LayoutDashboard,
+          roles: ["STAFF"],
+        },
+        ...baseItems,
+      ];
+  }
+};
 
 interface MobileNavProps {
   open: boolean;
@@ -89,7 +145,7 @@ export function MobileNav({ open, onClose }: MobileNavProps) {
   const { user } = useAuth();
 
   const role = (user?.role ?? "STAFF") as UserRole;
-  const filteredNav = navItems.filter((item) => item.roles.includes(role));
+  const navItems = getDashboardNavItems(role);
 
   const initials = user?.name
     ? user.name
@@ -155,7 +211,7 @@ export function MobileNav({ open, onClose }: MobileNavProps) {
           aria-label="Mobile sidebar"
         >
           <ul className="flex flex-col gap-1">
-            {filteredNav.map((item) => {
+            {navItems.map((item) => {
               const isActive =
                 pathname === item.href || pathname.startsWith(item.href + "/");
               const Icon = item.icon;

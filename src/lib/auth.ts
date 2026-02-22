@@ -36,7 +36,7 @@ const config = {
           );
           console.log("👉🏻 --->| response: ", response);
 
-          const { user, token } = response.data;
+          const { user, access_token } = response.data;
 
           return {
             id: user.id,
@@ -46,7 +46,7 @@ const config = {
             timezone: user.timezone,
             skills: user.skills,
             desiredWeeklyHours: user.desiredWeeklyHours,
-            token,
+            token: access_token,
           };
         } catch (error: unknown) {
           const message =
@@ -87,13 +87,18 @@ const config = {
     },
     async authorized({ auth, request }) {
       const protectedRoutes = [
+        // Role-based routes
+        ROUTES.ADMIN,
+        ROUTES.MANAGER,
+        ROUTES.STAFF,
+        // Legacy routes (to be removed)
         ROUTES.DASHBOARD,
         ROUTES.SCHEDULE,
         ROUTES.AVAILABILITY,
         ROUTES.SWAPS,
         ROUTES.DROPS,
         ROUTES.REQUESTS,
-        ROUTES.STAFF,
+        ROUTES.STAFF_MANAGEMENT,
         ROUTES.ANALYTICS,
       ];
 

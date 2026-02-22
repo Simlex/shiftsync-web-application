@@ -32,62 +32,108 @@ interface NavItem {
   roles: UserRole[];
 }
 
-const navItems: NavItem[] = [
-  {
-    label: "Dashboard",
-    href: ROUTES.DASHBOARD,
-    icon: LayoutDashboard,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Schedule",
-    href: ROUTES.SCHEDULE,
-    icon: Calendar,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "My Availability",
-    href: ROUTES.AVAILABILITY,
-    icon: Clock,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Swap Requests",
-    href: ROUTES.SWAPS,
-    icon: ArrowLeftRight,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Drop Requests",
-    href: ROUTES.DROPS,
-    icon: ArrowDownToLine,
-    roles: ["ADMIN", "MANAGER", "STAFF"],
-  },
-  {
-    label: "Staff Management",
-    href: ROUTES.STAFF,
-    icon: Users,
-    roles: ["ADMIN", "MANAGER"],
-  },
-  {
-    label: "Request Management",
-    href: ROUTES.REQUESTS,
-    icon: ClipboardList,
-    roles: ["ADMIN", "MANAGER"],
-  },
-  {
-    label: "Analytics",
-    href: ROUTES.ANALYTICS,
-    icon: BarChart3,
-    roles: ["ADMIN"],
-  },
-  {
-    label: "Settings",
-    href: ROUTES.SETTINGS,
-    icon: Settings,
-    roles: ["ADMIN"],
-  },
-];
+const getDashboardNavItems = (role: UserRole): NavItem[] => {
+  const baseItems: NavItem[] = [
+    // Common items available to all roles
+    {
+      label: "My Schedule",
+      href: ROUTES.STAFF_SCHEDULE,
+      icon: Calendar,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+    {
+      label: "My Availability",
+      href: ROUTES.STAFF_AVAILABILITY,
+      icon: Clock,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+    {
+      label: "Shift Swaps",
+      href: ROUTES.STAFF_SWAPS,
+      icon: ArrowLeftRight,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+    {
+      label: "Shift Drops",
+      href: ROUTES.STAFF_DROPS,
+      icon: ArrowDownToLine,
+      roles: ["ADMIN", "MANAGER", "STAFF"],
+    },
+  ];
+
+  // Add role-specific items based on user's role
+  switch (role) {
+    case "ADMIN":
+      return [
+        {
+          label: "Dashboard",
+          href: ROUTES.ADMIN,
+          icon: LayoutDashboard,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Analytics",
+          href: ROUTES.ADMIN_ANALYTICS,
+          icon: BarChart3,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Staff Management",
+          href: ROUTES.ADMIN_STAFF,
+          icon: Users,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Schedule Management",
+          href: ROUTES.ADMIN_SCHEDULE,
+          icon: Calendar,
+          roles: ["ADMIN"],
+        },
+        {
+          label: "Request Management",
+          href: ROUTES.ADMIN_REQUESTS,
+          icon: ClipboardList,
+          roles: ["ADMIN"],
+        },
+        ...baseItems,
+      ];
+
+    case "MANAGER":
+      return [
+        {
+          label: "Dashboard",
+          href: ROUTES.MANAGER,
+          icon: LayoutDashboard,
+          roles: ["MANAGER"],
+        },
+        {
+          label: "Schedule Management",
+          href: ROUTES.MANAGER_SCHEDULE,
+          icon: Calendar,
+          roles: ["MANAGER"],
+        },
+        {
+          label: "Request Management",
+          href: ROUTES.MANAGER_REQUESTS,
+          icon: ClipboardList,
+          roles: ["MANAGER"],
+        },
+        ...baseItems,
+      ];
+
+    case "STAFF":
+    default:
+      return [
+        {
+          label: "Dashboard",
+          href: ROUTES.STAFF,
+          icon: LayoutDashboard,
+          roles: ["STAFF"],
+        },
+        ...baseItems,
+      ];
+  }
+};
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -95,7 +141,7 @@ export function Sidebar() {
   const { user } = useAuth();
 
   const role = (user?.role ?? "STAFF") as UserRole;
-  const filteredNav = navItems.filter((item) => item.roles.includes(role));
+  const navItems = getDashboardNavItems(role);
 
   const initials = user?.name
     ? user.name
@@ -110,7 +156,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "fixed inset-y-0 left-0 z-30 flex flex-col border-r border-sidebar-border bg-sidebar-background text-sidebar-foreground transition-all duration-300",
-        sidebarOpen ? "w-64" : "w-16"
+        sidebarOpen ? "w-64" : "w-16",
       )}
       aria-label="Main navigation"
     >
@@ -127,7 +173,7 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-4" aria-label="Sidebar">
         <ul className="flex flex-col gap-1">
-          {filteredNav.map((item) => {
+          {navItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + "/");
             const Icon = item.icon;
@@ -142,7 +188,7 @@ export function Sidebar() {
                     isActive
                       ? "bg-sidebar-accent text-sidebar-accent-foreground"
                       : "text-sidebar-foreground/70",
-                    !sidebarOpen && "justify-center px-0"
+                    !sidebarOpen && "justify-center px-0",
                   )}
                   aria-current={isActive ? "page" : undefined}
                   title={!sidebarOpen ? item.label : undefined}
@@ -161,7 +207,7 @@ export function Sidebar() {
         <div
           className={cn(
             "flex items-center gap-3",
-            !sidebarOpen && "justify-center"
+            !sidebarOpen && "justify-center",
           )}
         >
           <Avatar size="sm" fallback={initials} alt={user?.name ?? "User"} />

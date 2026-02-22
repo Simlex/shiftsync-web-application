@@ -21,7 +21,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       <main
         className={cn(
           "min-h-screen pt-16 transition-all duration-300",
-          sidebarOpen ? "md:ml-64" : "md:ml-16"
+          sidebarOpen ? "md:ml-64" : "md:ml-16",
         )}
       >
         <div className="p-6">{children}</div>

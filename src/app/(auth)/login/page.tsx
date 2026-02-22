@@ -54,13 +54,16 @@ export default function LoginPage() {
     });
 
     if (result?.error) {
-      setError(result.error === "CredentialsSignin"
-        ? "Invalid email or password"
-        : result.error);
+      setError(
+        result.error === "CredentialsSignin"
+          ? "Invalid email or password"
+          : result.error,
+      );
       return;
     }
 
-    router.push(ROUTES.DASHBOARD);
+    // Redirect to home page, which will redirect based on user role
+    router.push(ROUTES.HOME);
   }
 
   return (
@@ -97,9 +100,7 @@ export default function LoginPage() {
               <p className="text-sm text-red-500">{errors.password.message}</p>
             )}
           </div>
-          {error && (
-            <p className="text-sm text-red-500">{error}</p>
-          )}
+          {error && <p className="text-sm text-red-500">{error}</p>}
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting && <Loader2 className="animate-spin" />}
             Sign In

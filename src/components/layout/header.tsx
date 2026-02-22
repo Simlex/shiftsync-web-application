@@ -21,7 +21,7 @@ export function Header({ notificationCount = 0 }: HeaderProps) {
       <header
         className={cn(
           "fixed top-0 right-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background px-4 transition-all duration-300",
-          sidebarOpen ? "left-64" : "left-16"
+          sidebarOpen ? "left-64" : "left-16",
         )}
         role="banner"
       >

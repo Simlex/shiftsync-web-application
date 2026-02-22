@@ -5,7 +5,7 @@ import { AuthSessionProvider } from "@/components/layout/session-provider";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import type { User, UserRole } from "@/types";
 
-export default async function DashboardLayout({
+export default async function ManagerLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -13,6 +13,11 @@ export default async function DashboardLayout({
   const session = await auth();
 
   if (!session?.user) {
+    redirect(ROUTES.LOGIN);
+  }
+
+  // Allow ADMIN and MANAGER users
+  if (!["ADMIN", "MANAGER"].includes(session.user.role)) {
     redirect(ROUTES.LOGIN);
   }
 
