@@ -1,0 +1,193 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
+import {
+  Clock,
+  LayoutDashboard,
+  Calendar,
+  ArrowLeftRight,
+  ArrowDownToLine,
+  Users,
+  ClipboardList,
+  BarChart3,
+  Settings,
+  LogOut,
+} from "lucide-react";
+import { ROUTES } from "@/constants/routes";
+import { cn } from "@/lib/utils";
+import { useUI } from "@/contexts/ui-context";
+import { useAuth } from "@/contexts/auth-context";
+import { Avatar } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import type { UserRole } from "@/types";
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  roles: UserRole[];
+}
+
+const navItems: NavItem[] = [
+  {
+    label: "Dashboard",
+    href: ROUTES.DASHBOARD,
+    icon: LayoutDashboard,
+    roles: ["ADMIN", "MANAGER", "STAFF"],
+  },
+  {
+    label: "Schedule",
+    href: ROUTES.SCHEDULE,
+    icon: Calendar,
+    roles: ["ADMIN", "MANAGER", "STAFF"],
+  },
+  {
+    label: "My Availability",
+    href: ROUTES.AVAILABILITY,
+    icon: Clock,
+    roles: ["ADMIN", "MANAGER", "STAFF"],
+  },
+  {
+    label: "Swap Requests",
+    href: ROUTES.SWAPS,
+    icon: ArrowLeftRight,
+    roles: ["ADMIN", "MANAGER", "STAFF"],
+  },
+  {
+    label: "Drop Requests",
+    href: ROUTES.DROPS,
+    icon: ArrowDownToLine,
+    roles: ["ADMIN", "MANAGER", "STAFF"],
+  },
+  {
+    label: "Staff Management",
+    href: ROUTES.STAFF,
+    icon: Users,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    label: "Request Management",
+    href: ROUTES.REQUESTS,
+    icon: ClipboardList,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    label: "Analytics",
+    href: ROUTES.ANALYTICS,
+    icon: BarChart3,
+    roles: ["ADMIN"],
+  },
+  {
+    label: "Settings",
+    href: ROUTES.SETTINGS,
+    icon: Settings,
+    roles: ["ADMIN"],
+  },
+];
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const { sidebarOpen } = useUI();
+  const { user } = useAuth();
+
+  const role = (user?.role ?? "STAFF") as UserRole;
+  const filteredNav = navItems.filter((item) => item.roles.includes(role));
+
+  const initials = user?.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : "?";
+
+  return (
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-30 flex flex-col border-r border-sidebar-border bg-sidebar-background text-sidebar-foreground transition-all duration-300",
+        sidebarOpen ? "w-64" : "w-16"
+      )}
+      aria-label="Main navigation"
+    >
+      {/* Branding */}
+      <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-4">
+        <Clock className="h-6 w-6 shrink-0 text-primary" />
+        {sidebarOpen && (
+          <span className="text-lg font-semibold tracking-tight">
+            ShiftSync
+          </span>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto px-2 py-4" aria-label="Sidebar">
+        <ul className="flex flex-col gap-1">
+          {filteredNav.map((item) => {
+            const isActive =
+              pathname === item.href || pathname.startsWith(item.href + "/");
+            const Icon = item.icon;
+
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                    "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70",
+                    !sidebarOpen && "justify-center px-0"
+                  )}
+                  aria-current={isActive ? "page" : undefined}
+                  title={!sidebarOpen ? item.label : undefined}
+                >
+                  <Icon className="h-5 w-5 shrink-0" />
+                  {sidebarOpen && <span>{item.label}</span>}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* User section */}
+      <div className="shrink-0 border-t border-sidebar-border p-3">
+        <div
+          className={cn(
+            "flex items-center gap-3",
+            !sidebarOpen && "justify-center"
+          )}
+        >
+          <Avatar size="sm" fallback={initials} alt={user?.name ?? "User"} />
+          {sidebarOpen && (
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-sm font-medium">
+                {user?.name ?? "User"}
+              </span>
+              <Badge variant="secondary" className="mt-0.5 w-fit text-[10px]">
+                {role}
+              </Badge>
+            </div>
+          )}
+          {sidebarOpen && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => signOut({ callbackUrl: ROUTES.LOGIN })}
+              aria-label="Sign out"
+              className="shrink-0"
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
