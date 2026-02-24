@@ -21,49 +21,56 @@ export function Header({ notificationCount = 0 }: HeaderProps) {
       <header
         className={cn(
           "fixed top-0 right-0 z-20 flex h-16 items-center justify-between border-b border-border bg-background px-4 transition-all duration-300",
-          sidebarOpen ? "left-64" : "left-16",
+          // Desktop sidebar behavior
+          "md:left-64 md:data-[sidebar-collapsed=true]:left-16",
+          // Mobile full width
+          "left-0 md:left-64",
+          sidebarOpen ? "md:left-64" : "md:left-16",
         )}
         role="banner"
+        data-sidebar-collapsed={!sidebarOpen}
       >
         {/* Left section */}
         <div className="flex items-center gap-2">
-          {/* Desktop toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebar}
-            aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-            className="hidden md:inline-flex"
-          >
-            {sidebarOpen ? (
-              <PanelLeftClose className="h-5 w-5" />
-            ) : (
-              <Menu className="h-5 w-5" />
-            )}
-          </Button>
+          {/* Desktop toggle - only show on desktop */}
+          <div className="hidden lg:inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+              className="hidden lg:inline-flex"
+            >
+              {sidebarOpen ? (
+                <PanelLeftClose className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
 
-          {/* Mobile hamburger */}
+          {/* Mobile hamburger - only show on mobile */}
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setMobileNavOpen(true)}
             aria-label="Open navigation menu"
-            className="md:hidden"
+            className="lg:hidden"
           >
             <Menu className="h-5 w-5" />
           </Button>
         </div>
 
         {/* Center section - Brand logo for mobile */}
-        <div className="flex items-center gap-2 md:hidden">
-          <Clock className="h-5 w-5 text-primary" />
-          <span className="text-lg font-semibold tracking-tight">
+        <div className="flex items-center gap-2 md:hidden absolute left-1/2 transform -translate-x-1/2">
+          <Clock className="h-6 w-6 text-primary" />
+          <span className="text-lg font-bold tracking-tight text-foreground">
             ShiftSync
           </span>
         </div>
 
         {/* Right section */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 ml-auto">
           <Button
             variant="ghost"
             size="icon"
