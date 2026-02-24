@@ -1,0 +1,18 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="8" cy="8" r="8" fill="#2563eb"/>
+  
+  <!-- Clock face -->
+  <circle cx="8" cy="8" r="6" fill="white"/>
+  
+  <!-- Clock hands -->
+  <line x1="8" y1="8" x2="8" y2="4" stroke="#2563eb" stroke-width="1" stroke-linecap="round"/>
+  <line x1="8" y1="8" x2="12" y2="8" stroke="#2563eb" stroke-width="1" stroke-linecap="round"/>
+  
+  <!-- Center dot -->
+  <circle cx="8" cy="8" r="1" fill="#2563eb"/>
+  
+  <!-- Small sync indicators -->
+  <path d="M5 2 L4 3 L5 4" stroke="white" stroke-width="0.5" stroke-linecap="round" fill="none"/>
+  <path d="M11 14 L12 13 L11 12" stroke="white" stroke-width="0.5" stroke-linecap="round" fill="none"/>
+</svg>

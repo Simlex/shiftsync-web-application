@@ -17,6 +17,14 @@ export const metadata: Metadata = {
   title: "ShiftSync - Staff Scheduling Platform",
   description:
     "Intelligent multi-location staff scheduling with real-time updates",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon-16x16.svg", sizes: "16x16", type: "image/svg+xml" },
+    ],
+    apple: { url: "/apple-touch-icon.svg", type: "image/svg+xml" },
+  },
+  manifest: "/site.webmanifest",
 };
 
 export default function RootLayout({
