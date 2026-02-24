@@ -9,6 +9,8 @@ import { api, isAxiosError } from "./api-client";
  */
 
 const config = {
+  secret:
+    process.env.NEXTAUTH_SECRET || "your-secret-key-for-shiftsync-production",
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -120,24 +122,8 @@ const config = {
   jwt: {
     maxAge: 24 * 60 * 60, // 24 hours
   },
-  debug: process.env.NODE_ENV === "development",
+  debug: true, // Enable debug in production to see what's happening
   trustHost: true,
-  // Add production-friendly configuration
-  useSecureCookies: process.env.NODE_ENV === "production",
-  cookies: {
-    sessionToken: {
-      name:
-        process.env.NODE_ENV === "production"
-          ? "__Secure-next-auth.session-token"
-          : "next-auth.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-  },
 } satisfies NextAuthConfig;
 
 export const { auth, signIn, signOut, handlers } = NextAuth(config);
