@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useMemo } from "react";
 import { DateTime } from "luxon";
 import {
@@ -18,8 +17,10 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { StatsCard, StatsCardSkeleton } from "@/components/dashboard/stats-card";
+import {
+  StatsCard,
+  StatsCardSkeleton,
+} from "@/components/dashboard/stats-card";
 import { useFetchShifts } from "@/hooks/shifts";
 
 type DateRange = "7d" | "30d" | "month";
@@ -111,8 +112,10 @@ export default function AnalyticsPage() {
               value={
                 shifts.length > 0
                   ? (
-                      shifts.reduce((sum: number, s: any) => sum + (s.headcount || 0), 0) /
-                      shifts.length
+                      shifts.reduce(
+                        (sum: number, s: any) => sum + (s.headcount || 0),
+                        0,
+                      ) / shifts.length
                     ).toFixed(1)
                   : "0"
               }
@@ -121,7 +124,13 @@ export default function AnalyticsPage() {
             />
             <StatsCard
               title="Period"
-              value={dateRange === "7d" ? "7 Days" : dateRange === "30d" ? "30 Days" : "This Month"}
+              value={
+                dateRange === "7d"
+                  ? "7 Days"
+                  : dateRange === "30d"
+                    ? "30 Days"
+                    : "This Month"
+              }
               icon={AlertTriangle}
               iconColor="bg-amber-500"
             />
@@ -144,9 +153,6 @@ export default function AnalyticsPage() {
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
                 Chart coming soon
               </p>
-              <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                Integrate Recharts to visualize shift coverage trends
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -163,9 +169,6 @@ export default function AnalyticsPage() {
               <PieChart className="mb-3 h-12 w-12 text-zinc-200 dark:text-zinc-700" />
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
                 Chart coming soon
-              </p>
-              <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                Integrate Recharts to visualize hours distribution
               </p>
             </div>
           </CardContent>
@@ -184,9 +187,6 @@ export default function AnalyticsPage() {
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
                 Chart coming soon
               </p>
-              <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                Integrate Recharts to visualize request trends
-              </p>
             </div>
           </CardContent>
         </Card>
@@ -194,18 +194,13 @@ export default function AnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Staff Performance</CardTitle>
-            <CardDescription>
-              Attendance and reliability scores
-            </CardDescription>
+            <CardDescription>Attendance and reliability scores</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Activity className="mb-3 h-12 w-12 text-zinc-200 dark:text-zinc-700" />
               <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
                 Chart coming soon
-              </p>
-              <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                Integrate Recharts to visualize staff performance
               </p>
             </div>
           </CardContent>
