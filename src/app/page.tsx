@@ -1,26 +1,46 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+"use client";
+
+import { useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { ROUTES } from "@/constants/routes";
+import { Loader2 } from "lucide-react";
 
-export default async function Home() {
-  const session = await auth();
+export default function Home() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
-  if (session?.user) {
-    // Redirect based on user role
-    switch (session.user.role) {
-      case "ADMIN":
-        redirect(ROUTES.ADMIN);
-        break;
-      case "MANAGER":
-        redirect(ROUTES.MANAGER);
-        break;
-      case "STAFF":
-        redirect(ROUTES.STAFF);
-        break;
-      default:
-        redirect(ROUTES.STAFF); // Default to staff if role is unknown
+  useEffect(() => {
+    if (status === "loading") return; // Still loading
+
+    if (session?.user) {
+      // Redirect based on user role
+      switch (session.user.role) {
+        case "ADMIN":
+          router.replace(ROUTES.ADMIN);
+          break;
+        case "MANAGER":
+          router.replace(ROUTES.MANAGER);
+          break;
+        case "STAFF":
+          router.replace(ROUTES.STAFF);
+          break;
+        default:
+          router.replace(ROUTES.STAFF); // Default to staff if role is unknown
+      }
+    } else {
+      // No session, redirect to login
+      router.replace(ROUTES.LOGIN);
     }
-  }
+  }, [session, status, router]);
 
-  redirect(ROUTES.LOGIN);
+  // Show loading spinner while determining authentication state
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="flex flex-col items-center space-y-4">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <p className="text-sm text-gray-600">Loading...</p>
+      </div>
+    </div>
+  );
 }

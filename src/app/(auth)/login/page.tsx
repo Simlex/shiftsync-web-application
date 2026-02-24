@@ -62,8 +62,10 @@ export default function LoginPage() {
       return;
     }
 
-    // Redirect to home page, which will redirect based on user role
-    router.push(ROUTES.HOME);
+    if (result?.ok) {
+      // Force a hard refresh to ensure session is properly set
+      window.location.href = ROUTES.HOME;
+    }
   }
 
   return (

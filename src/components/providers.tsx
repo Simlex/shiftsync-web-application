@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { SessionProvider } from "next-auth/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/auth-context";
@@ -23,15 +24,17 @@ const queryClient = new QueryClient({
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <UIProvider>
-          <RealtimeProvider>
-            {children}
-            <Toaster richColors position="top-right" />
-          </RealtimeProvider>
-        </UIProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <UIProvider>
+            <RealtimeProvider>
+              {children}
+              <Toaster richColors position="top-right" />
+            </RealtimeProvider>
+          </UIProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </SessionProvider>
   );
 }
