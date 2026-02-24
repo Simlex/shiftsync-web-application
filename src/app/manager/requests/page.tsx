@@ -141,7 +141,11 @@ function formatShiftTime(
   userTimezone: string,
 ): string {
   if (!startTime) return "—";
-  return timezone.formatUserTime(startTime, userTimezone, DATE_FORMATS.DISPLAY_DATETIME);
+  return timezone.formatUserTime(
+    startTime,
+    userTimezone,
+    DATE_FORMATS.DISPLAY_DATETIME,
+  );
 }
 
 // --------------------------------------------------------------------------
@@ -151,7 +155,7 @@ function formatShiftTime(
 export default function RequestManagementPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const userTz = user?.timezone ?? "UTC";
+  const userTz = user?.preferredTimezone ?? "UTC";
 
   const [swapFilter, setSwapFilter] = useState<SwapFilter>("ALL");
   const [dropFilter, setDropFilter] = useState<DropFilter>("ALL");
@@ -218,14 +222,10 @@ export default function RequestManagementPage() {
   const drops = extractData<DropRequest>(dropsRaw);
 
   const filteredSwaps =
-    swapFilter === "ALL"
-      ? swaps
-      : swaps.filter((s) => s.status === swapFilter);
+    swapFilter === "ALL" ? swaps : swaps.filter((s) => s.status === swapFilter);
 
   const filteredDrops =
-    dropFilter === "ALL"
-      ? drops
-      : drops.filter((d) => d.status === dropFilter);
+    dropFilter === "ALL" ? drops : drops.filter((d) => d.status === dropFilter);
 
   return (
     <div className="space-y-6">
@@ -261,7 +261,9 @@ export default function RequestManagementPage() {
                     size="sm"
                     onClick={() => setSwapFilter(filter)}
                   >
-                    {filter === "ALL" ? "All" : filter.charAt(0) + filter.slice(1).toLowerCase()}
+                    {filter === "ALL"
+                      ? "All"
+                      : filter.charAt(0) + filter.slice(1).toLowerCase()}
                   </Button>
                 ),
               )}
@@ -353,9 +355,7 @@ export default function RequestManagementPage() {
                                     size="sm"
                                     className="h-8"
                                     disabled={approveSwap.isPending}
-                                    onClick={() =>
-                                      approveSwap.mutate(swap.id)
-                                    }
+                                    onClick={() => approveSwap.mutate(swap.id)}
                                   >
                                     <Check className="h-3 w-3" />
                                     Approve
@@ -364,9 +364,7 @@ export default function RequestManagementPage() {
                                     variant="ghost"
                                     size="sm"
                                     className="h-8 text-red-600 hover:text-red-700 dark:text-red-400"
-                                    onClick={() =>
-                                      setRejectingSwapId(swap.id)
-                                    }
+                                    onClick={() => setRejectingSwapId(swap.id)}
                                   >
                                     <X className="h-3 w-3" />
                                     Reject
@@ -408,7 +406,9 @@ export default function RequestManagementPage() {
                     size="sm"
                     onClick={() => setDropFilter(filter)}
                   >
-                    {filter === "ALL" ? "All" : filter.charAt(0) + filter.slice(1).toLowerCase()}
+                    {filter === "ALL"
+                      ? "All"
+                      : filter.charAt(0) + filter.slice(1).toLowerCase()}
                   </Button>
                 ),
               )}

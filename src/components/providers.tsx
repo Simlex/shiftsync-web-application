@@ -2,6 +2,7 @@
 
 import { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/auth-context";
 import { UIProvider } from "@/contexts/ui-context";
 import { RealtimeProvider } from "@/contexts/realtime-context";
@@ -25,7 +26,10 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <UIProvider>
-          <RealtimeProvider>{children}</RealtimeProvider>
+          <RealtimeProvider>
+            {children}
+            <Toaster richColors position="top-right" />
+          </RealtimeProvider>
         </UIProvider>
       </AuthProvider>
     </QueryClientProvider>

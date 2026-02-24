@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { DateTime } from "luxon";
 import {
   Clock,
   BarChart3,
@@ -17,9 +18,9 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { StatsCard } from "@/components/dashboard/stats-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatsCard, StatsCardSkeleton } from "@/components/dashboard/stats-card";
+import { useFetchShifts } from "@/hooks/shifts";
 
 type DateRange = "7d" | "30d" | "month";
 
@@ -31,6 +32,27 @@ const DATE_RANGE_OPTIONS: { id: DateRange; label: string }[] = [
 
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<DateRange>("7d");
+
+  const dateParams = useMemo(() => {
+    const now = DateTime.now();
+    let start: DateTime;
+    if (dateRange === "7d") {
+      start = now.minus({ days: 7 });
+    } else if (dateRange === "30d") {
+      start = now.minus({ days: 30 });
+    } else {
+      start = now.startOf("month");
+    }
+    return {
+      startDate: start.toUTC().toISO() ?? "",
+      endDate: now.toUTC().toISO() ?? "",
+    };
+  }, [dateRange]);
+
+  const { data: shifts = [], isLoading } = useFetchShifts(
+    dateParams,
+    !!dateParams.startDate && !!dateParams.endDate,
+  );
 
   return (
     <div className="space-y-6">
@@ -63,34 +85,48 @@ export default function AnalyticsPage() {
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="Total Hours Worked"
-          value="1,248"
-          icon={Clock}
-          iconColor="bg-blue-500"
-          trend={{ value: 5, label: "vs previous period" }}
-        />
-        <StatsCard
-          title="Average Fill Rate"
-          value="94%"
-          icon={BarChart3}
-          iconColor="bg-emerald-500"
-          trend={{ value: 3, label: "vs previous period" }}
-        />
-        <StatsCard
-          title="Swap Success Rate"
-          value="87%"
-          icon={ArrowLeftRight}
-          iconColor="bg-purple-500"
-          trend={{ value: -2, label: "vs previous period" }}
-        />
-        <StatsCard
-          title="Overtime Incidents"
-          value={4}
-          icon={AlertTriangle}
-          iconColor="bg-amber-500"
-          trend={{ value: -1, label: "vs previous period" }}
-        />
+        {isLoading ? (
+          <>
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+          </>
+        ) : (
+          <>
+            <StatsCard
+              title="Total Shifts"
+              value={shifts.length}
+              icon={Clock}
+              iconColor="bg-blue-500"
+            />
+            <StatsCard
+              title="Unique Locations"
+              value={new Set(shifts.map((s: any) => s.locationId)).size}
+              icon={BarChart3}
+              iconColor="bg-emerald-500"
+            />
+            <StatsCard
+              title="Avg Headcount / Shift"
+              value={
+                shifts.length > 0
+                  ? (
+                      shifts.reduce((sum: number, s: any) => sum + (s.headcount || 0), 0) /
+                      shifts.length
+                    ).toFixed(1)
+                  : "0"
+              }
+              icon={ArrowLeftRight}
+              iconColor="bg-purple-500"
+            />
+            <StatsCard
+              title="Period"
+              value={dateRange === "7d" ? "7 Days" : dateRange === "30d" ? "30 Days" : "This Month"}
+              icon={AlertTriangle}
+              iconColor="bg-amber-500"
+            />
+          </>
+        )}
       </div>
 
       {/* Charts Section */}

@@ -5,7 +5,11 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 import { ROUTES } from "@/constants/routes";
-import type { RecurringAvailability, AvailabilityException } from "@/types";
+import type {
+  RecurringAvailability,
+  AvailabilityException,
+  CreateUser,
+} from "@/types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -101,14 +105,33 @@ export const api = {
 
   // Users
   users: {
-    getProfile: () => apiClient.get("/users/profile"),
+    getUsers: (params?: { role?: string; locationId?: string }) =>
+      apiClient.get("/users", { params }),
+    getUser: (id: string) => apiClient.get(`/users/${id}`),
+    getProfile: () => apiClient.get("/users/me"),
     updateProfile: (data: {
       name?: string;
       email?: string;
       timezone?: string;
       skills?: string[];
       desiredWeeklyHours?: number;
-    }) => apiClient.put("/users/profile", data),
+    }) => apiClient.patch("/users/me/profile", data),
+    createUser: (data: CreateUser) => apiClient.post("/users", data),
+    updateUser: (
+      id: string,
+      data: Partial<{
+        name: string;
+        email: string;
+        role: "ADMIN" | "MANAGER" | "STAFF";
+        preferredTimezone: string;
+        desiredWeeklyHours: number;
+      }>,
+    ) => apiClient.patch(`/users/${id}`, data),
+    deleteUser: (id: string) => apiClient.delete(`/users/${id}`),
+    getEligibleStaff: (locationId: string, skill?: string) =>
+      apiClient.get(`/users/eligible/${locationId}`, {
+        params: skill ? { skill } : undefined,
+      }),
     getAvailability: () => apiClient.get("/users/availability"),
     updateAvailability: (data: {
       recurring: RecurringAvailability[];
@@ -122,34 +145,39 @@ export const api = {
       locationId?: string;
       startDate?: string;
       endDate?: string;
+      userId?: string;
+      published?: string;
     }) => apiClient.get("/shifts", { params }),
+    getMyShifts: (params?: { startDate?: string; endDate?: string }) =>
+      apiClient.get("/shifts/my-shifts", { params }),
     getShift: (id: string) => apiClient.get(`/shifts/${id}`),
     createShift: (data: {
       locationId: string;
+      localDate: string;
       startTime: string;
       endTime: string;
-      requiredSkills?: string[];
-      headcount: number;
-      description?: string;
+      requiredSkill: string;
+      requiredHeadcount: number;
     }) => apiClient.post("/shifts", data),
     updateShift: (
       id: string,
       data: Partial<{
-        locationId: string;
+        localDate: string;
         startTime: string;
         endTime: string;
-        requiredSkills: string[];
-        headcount: number;
-        description: string;
+        requiredSkill: string;
+        requiredHeadcount: number;
       }>,
-    ) => apiClient.put(`/shifts/${id}`, data),
+    ) => apiClient.patch(`/shifts/${id}`, data),
     deleteShift: (id: string) => apiClient.delete(`/shifts/${id}`),
-    assignShift: (id: string, userId: string) =>
-      apiClient.post(`/shifts/${id}/assign`, { userId }),
-    unassignShift: (id: string, assignmentId: string) =>
-      apiClient.delete(`/shifts/${id}/unassign`, {
-        data: { assignmentId },
-      }),
+    getEligibleStaff: (shiftId: string) =>
+      apiClient.get(`/shifts/${shiftId}/eligible-staff`),
+    assignShift: (
+      id: string,
+      data: { userId: string; overrideReason?: string },
+    ) => apiClient.post(`/shifts/${id}/assign`, data),
+    unassignShift: (shiftId: string, userId: string) =>
+      apiClient.delete(`/shifts/${shiftId}/assignments/${userId}`),
   },
 
   // Swap Requests
@@ -188,6 +216,24 @@ export const api = {
   locations: {
     getLocations: () => apiClient.get("/locations"),
     getLocation: (id: string) => apiClient.get(`/locations/${id}`),
+    getLocationStaff: (id: string) => apiClient.get(`/locations/${id}/staff`),
+    getManagedLocations: () => apiClient.get("/locations/my-managed"),
+    createLocation: (data: {
+      name: string;
+      timezone: string;
+      address?: string;
+    }) => apiClient.post("/locations", data),
+    updateLocation: (
+      id: string,
+      data: Partial<{ name: string; timezone: string; address: string }>,
+    ) => apiClient.patch(`/locations/${id}`, data),
+    deleteLocation: (id: string) => apiClient.delete(`/locations/${id}`),
+    assignManager: (locationId: string, managerId: string) =>
+      apiClient.post(`/locations/${locationId}/managers`, {
+        managerId,
+      }),
+    removeManager: (locationId: string, managerId: string) =>
+      apiClient.delete(`/locations/${locationId}/managers/${managerId}`),
   },
 
   // Constraints

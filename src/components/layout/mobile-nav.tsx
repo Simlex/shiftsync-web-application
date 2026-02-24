@@ -33,31 +33,30 @@ interface NavItem {
 }
 
 const getDashboardNavItems = (role: UserRole): NavItem[] => {
-  const baseItems: NavItem[] = [
-    // Common items available to all roles
+  const staffOnlyItems: NavItem[] = [
     {
       label: "My Schedule",
       href: ROUTES.STAFF_SCHEDULE,
       icon: Calendar,
-      roles: ["ADMIN", "MANAGER", "STAFF"],
+      roles: ["STAFF"],
     },
     {
       label: "My Availability",
       href: ROUTES.STAFF_AVAILABILITY,
       icon: Clock,
-      roles: ["ADMIN", "MANAGER", "STAFF"],
+      roles: ["STAFF"],
     },
     {
       label: "Shift Swaps",
       href: ROUTES.STAFF_SWAPS,
       icon: ArrowLeftRight,
-      roles: ["ADMIN", "MANAGER", "STAFF"],
+      roles: ["STAFF"],
     },
     {
       label: "Shift Drops",
       href: ROUTES.STAFF_DROPS,
       icon: ArrowDownToLine,
-      roles: ["ADMIN", "MANAGER", "STAFF"],
+      roles: ["STAFF"],
     },
   ];
 
@@ -95,7 +94,6 @@ const getDashboardNavItems = (role: UserRole): NavItem[] => {
           icon: ClipboardList,
           roles: ["ADMIN"],
         },
-        ...baseItems,
       ];
 
     case "MANAGER":
@@ -118,7 +116,6 @@ const getDashboardNavItems = (role: UserRole): NavItem[] => {
           icon: ClipboardList,
           roles: ["MANAGER"],
         },
-        ...baseItems,
       ];
 
     case "STAFF":
@@ -130,7 +127,7 @@ const getDashboardNavItems = (role: UserRole): NavItem[] => {
           icon: LayoutDashboard,
           roles: ["STAFF"],
         },
-        ...baseItems,
+        ...staffOnlyItems,
       ];
   }
 };

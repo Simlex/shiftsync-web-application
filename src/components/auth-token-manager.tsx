@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuthToken } from "@/hooks/useAuthToken";
+import { useAuthToken } from "@/app/client-hooks/useAuthToken";
 
 /**
  * Component that automatically manages API client authentication

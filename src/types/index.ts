@@ -13,11 +13,21 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
-  timezone: string; // e.g., "America/New_York"
+  preferredTimezone: string; // e.g., "America/New_York"
   skills: string[];
   desiredWeeklyHours?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CreateUser {
+  email: string;
+  password: string;
+  name: string;
+  role?: UserRole;
+  preferredTimezone?: string;
+  skills?: string[];
+  desiredWeeklyHours?: number;
 }
 
 export interface AuthSession {
@@ -49,9 +59,9 @@ export interface Shift {
   location?: Location;
   startTime: string; // ISO 8601 UTC
   endTime: string; // ISO 8601 UTC
-  requiredSkills?: string[];
-  headcount: number;
-  description?: string;
+  requiredSkill: string;
+  requiredHeadcount: number;
+  assignments?: ShiftAssignment[];
   createdAt: string;
   updatedAt: string;
 }

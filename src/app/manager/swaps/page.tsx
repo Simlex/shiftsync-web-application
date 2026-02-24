@@ -1,11 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import {
   ArrowLeftRight,
@@ -22,7 +18,7 @@ import { timezone } from "@/lib/timezone";
 import { useAuth } from "@/contexts/auth-context";
 import { DATE_FORMATS } from "@/constants";
 import { cn, extractData } from "@/lib/utils";
-import { useToast } from "@/hooks";
+import { useToast } from "@/app/client-hooks";
 import {
   Card,
   CardHeader,
@@ -67,11 +63,11 @@ export default function SwapsPage() {
   const { user } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const userTimezone = user?.timezone ?? "UTC";
+  const userTimezone = user?.preferredTimezone ?? "UTC";
 
   const [activeTab, setActiveTab] = useState<Tab>("my-requests");
   const [statusFilter, setStatusFilter] = useState<SwapRequestStatus | "ALL">(
-    "ALL"
+    "ALL",
   );
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -104,14 +100,16 @@ export default function SwapsPage() {
   const { data: staffData, isLoading: staffLoading } = useQuery({
     queryKey: ["users", "staff"],
     queryFn: async () => {
-      const res = await api.users.getProfile();
-      return [] as User[];
+      const res = await api.users.getUsers({ role: "STAFF" });
+      const data = res.data;
+      return (Array.isArray(data) ? data : (data as any)?.data ?? []) as User[];
     },
     enabled: activeTab === "create",
   });
 
   const swaps = extractData(swapsData);
   const myShifts = extractData(shiftsData);
+  const staffList = (staffData ?? []) as User[];
 
   const myRequests = swaps.filter((s) => s.initiatorId === user?.id);
   const incomingRequests = swaps.filter((s) => s.targetUserId === user?.id);
@@ -134,7 +132,7 @@ export default function SwapsPage() {
   });
 
   const targetShifts = extractData(targetShiftsData).filter(
-    (s) => s.userId === targetUserId
+    (s) => s.userId === targetUserId,
   );
 
   // Mutations
@@ -189,12 +187,12 @@ export default function SwapsPage() {
     const start = timezone.formatUserTime(
       assignment.shift.startTime,
       userTimezone,
-      DATE_FORMATS.DISPLAY_DATETIME
+      DATE_FORMATS.DISPLAY_DATETIME,
     );
     const end = timezone.formatUserTime(
       assignment.shift.endTime,
       userTimezone,
-      DATE_FORMATS.TIME_ONLY
+      DATE_FORMATS.TIME_ONLY,
     );
     return `${start} – ${end}`;
   };
@@ -203,12 +201,12 @@ export default function SwapsPage() {
     const date = timezone.formatUserTime(
       assignment.shift.startTime,
       userTimezone,
-      DATE_FORMATS.DISPLAY_DATE
+      DATE_FORMATS.DISPLAY_DATE,
     );
     const time = timezone.formatUserTime(
       assignment.shift.startTime,
       userTimezone,
-      DATE_FORMATS.TIME_ONLY
+      DATE_FORMATS.TIME_ONLY,
     );
     const location = assignment.shift.location?.name ?? "Unknown Location";
     return `${date} ${time} — ${location}`;
@@ -236,16 +234,21 @@ export default function SwapsPage() {
                 "flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors",
                 activeTab === tab.id
                   ? "border-zinc-900 text-zinc-900 dark:border-zinc-50 dark:text-zinc-50"
-                  : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300"
+                  : "border-transparent text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-300",
               )}
             >
               <Icon className="h-4 w-4" />
               {tab.label}
-              {tab.id === "incoming" && incomingRequests.filter((r) => r.status === "PENDING").length > 0 && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs text-white">
-                  {incomingRequests.filter((r) => r.status === "PENDING").length}
-                </span>
-              )}
+              {tab.id === "incoming" &&
+                incomingRequests.filter((r) => r.status === "PENDING").length >
+                  0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs text-white">
+                    {
+                      incomingRequests.filter((r) => r.status === "PENDING")
+                        .length
+                    }
+                  </span>
+                )}
             </button>
           );
         })}
@@ -306,8 +309,7 @@ export default function SwapsPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">
-                          Swap with{" "}
-                          {swap.targetUser?.name ?? "Unknown User"}
+                          Swap with {swap.targetUser?.name ?? "Unknown User"}
                         </p>
                         <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                           {swap.initiatorShift && (
@@ -326,7 +328,7 @@ export default function SwapsPage() {
                           {timezone.formatUserTime(
                             swap.createdAt,
                             userTimezone,
-                            DATE_FORMATS.DISPLAY_DATE
+                            DATE_FORMATS.DISPLAY_DATE,
                           )}
                         </p>
                       </div>
@@ -382,7 +384,8 @@ export default function SwapsPage() {
                         <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                           {swap.initiatorShift && (
                             <span>
-                              Their shift: {formatShiftTime(swap.initiatorShift)}
+                              Their shift:{" "}
+                              {formatShiftTime(swap.initiatorShift)}
                             </span>
                           )}
                           {swap.targetShift && (
@@ -401,7 +404,7 @@ export default function SwapsPage() {
                           {timezone.formatUserTime(
                             swap.createdAt,
                             userTimezone,
-                            DATE_FORMATS.DISPLAY_DATE
+                            DATE_FORMATS.DISPLAY_DATE,
                           )}
                         </p>
                       </div>
@@ -526,18 +529,32 @@ export default function SwapsPage() {
               {/* Target User */}
               <div className="space-y-2">
                 <Label htmlFor="target-user">Target Staff Member</Label>
-                <Input
-                  id="target-user"
-                  placeholder="Enter staff member's user ID"
-                  value={targetUserId}
-                  onChange={(e) => {
-                    setTargetUserId(e.target.value);
-                    setTargetShiftId("");
-                  }}
-                />
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Enter the user ID of the staff member you want to swap with
-                </p>
+                {staffLoading ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : staffList.length === 0 ? (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    No staff members available.
+                  </p>
+                ) : (
+                  <select
+                    id="target-user"
+                    value={targetUserId}
+                    onChange={(e) => {
+                      setTargetUserId(e.target.value);
+                      setTargetShiftId("");
+                    }}
+                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+                  >
+                    <option value="">Select a staff member...</option>
+                    {staffList
+                      .filter((s) => s.id !== user?.id)
+                      .map((staff) => (
+                        <option key={staff.id} value={staff.id}>
+                          {staff.name} ({staff.email})
+                        </option>
+                      ))}
+                  </select>
+                )}
               </div>
 
               {/* Target Shift */}
@@ -594,7 +611,9 @@ export default function SwapsPage() {
                   createMutation.isPending
                 }
               >
-                {createMutation.isPending ? "Submitting..." : "Submit Swap Request"}
+                {createMutation.isPending
+                  ? "Submitting..."
+                  : "Submit Swap Request"}
               </Button>
             </div>
           </CardContent>

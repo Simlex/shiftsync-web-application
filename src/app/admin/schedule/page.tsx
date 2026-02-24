@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { toast } from "sonner";
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,8 +13,14 @@ import {
   Clock,
   X,
   Wrench,
+  Plus,
+  Pencil,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Trash2,
 } from "lucide-react";
-import { api } from "@/lib/api-client";
+import { api, getErrorMessage } from "@/lib/api-client";
 import { timezone } from "@/lib/timezone";
 import { useAuth } from "@/contexts/auth-context";
 import { DATE_FORMATS } from "@/constants";
@@ -27,9 +34,21 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import type { Shift } from "@/types";
+import { Avatar } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { useFetchLocations } from "@/hooks/locations";
+import type { Shift, Location } from "@/types";
 
 type ViewMode = "week" | "month";
 
@@ -49,13 +68,501 @@ function getLocationColor(locationId: string, locationIds: string[]): string {
   return LOCATION_COLORS[index % LOCATION_COLORS.length];
 }
 
+// --------------------------------------------------------------------------
+// Eligible staff type from GET /shifts/:id/eligible-staff
+// --------------------------------------------------------------------------
+
+interface EligibleStaffMember {
+  id: string;
+  name: string;
+  email: string;
+  skills: string[];
+  preferredTimezone: string;
+  desiredWeeklyHours?: number;
+  canAssign: boolean;
+  violations: { message: string; type: string }[];
+  warnings: { message: string; type: string }[];
+  score: number;
+}
+
+// --------------------------------------------------------------------------
+// Create Shift Dialog
+// --------------------------------------------------------------------------
+
+function CreateShiftDialog({
+  open,
+  onOpenChange,
+  defaultDate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  defaultDate?: string;
+}) {
+  const queryClient = useQueryClient();
+  const { data: locations = [] } = useFetchLocations();
+
+  const [locationId, setLocationId] = useState("");
+  const [localDate, setLocalDate] = useState(
+    defaultDate ?? DateTime.now().toFormat(DATE_FORMATS.DATE_ONLY),
+  );
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [requiredSkill, setRequiredSkill] = useState("");
+  const [requiredHeadcount, setRequiredHeadcount] = useState(1);
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.shifts.createShift({
+        locationId,
+        localDate,
+        startTime,
+        endTime,
+        requiredSkill,
+        requiredHeadcount,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success("Shift created successfully");
+      onOpenChange(false);
+      // Reset form
+      setLocationId("");
+      setStartTime("09:00");
+      setEndTime("17:00");
+      setRequiredSkill("");
+      setRequiredHeadcount(1);
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const canSubmit =
+    locationId && localDate && startTime && endTime && requiredSkill;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create Shift</DialogTitle>
+          <DialogDescription>
+            Add a new shift to the schedule.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Location */}
+          <div className="space-y-1.5">
+            <Label>Location</Label>
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className="w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+            >
+              <option value="">Select location...</option>
+              {locations.map((loc: Location) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date */}
+          <div className="space-y-1.5">
+            <Label>Date</Label>
+            <Input
+              type="date"
+              value={localDate}
+              onChange={(e) => setLocalDate(e.target.value)}
+            />
+          </div>
+
+          {/* Time range */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Start Time</Label>
+              <Input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>End Time</Label>
+              <Input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Required Skill */}
+          <div className="space-y-1.5">
+            <Label>Required Skill</Label>
+            <Input
+              placeholder="e.g. Barista, Cashier..."
+              value={requiredSkill}
+              onChange={(e) => setRequiredSkill(e.target.value)}
+            />
+          </div>
+
+          {/* Headcount */}
+          <div className="space-y-1.5">
+            <Label>Required Headcount</Label>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={requiredHeadcount}
+              onChange={(e) =>
+                setRequiredHeadcount(parseInt(e.target.value) || 1)
+              }
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={mutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={!canSubmit || mutation.isPending}
+          >
+            {mutation.isPending ? "Creating..." : "Create Shift"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Assign Staff Dialog
+// --------------------------------------------------------------------------
+
+function AssignStaffDialog({
+  shift,
+  open,
+  onOpenChange,
+  userTimezone,
+}: {
+  shift: Shift;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  userTimezone: string;
+}) {
+  const queryClient = useQueryClient();
+
+  const { data: eligibleStaff, isLoading } = useQuery({
+    queryKey: ["shifts", shift.id, "eligible-staff"],
+    queryFn: async () => {
+      const res = await api.shifts.getEligibleStaff(shift.id);
+      return res.data as EligibleStaffMember[];
+    },
+    enabled: open,
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: (userId: string) =>
+      api.shifts.assignShift(shift.id, { userId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success("Staff assigned successfully");
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const shiftTimeLabel = `${timezone.formatUserTime(shift.startTime, userTimezone, "h:mm a")} – ${timezone.formatUserTime(shift.endTime, userTimezone, "h:mm a")}`;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Assign Staff</DialogTitle>
+          <DialogDescription>
+            {shift.location?.name ?? "Unknown"} · {shiftTimeLabel}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-80 space-y-2 overflow-y-auto">
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full" />
+              ))}
+            </div>
+          ) : !eligibleStaff || eligibleStaff.length === 0 ? (
+            <div className="flex flex-col items-center py-8 text-center">
+              <Users className="mb-2 h-8 w-8 text-zinc-300 dark:text-zinc-600" />
+              <p className="text-sm font-medium">No eligible staff</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                No staff members match the required skill and location.
+              </p>
+            </div>
+          ) : (
+            eligibleStaff.map((staff) => (
+              <div
+                key={staff.id}
+                className={cn(
+                  "flex items-center justify-between rounded-lg border p-3",
+                  staff.canAssign
+                    ? "border-zinc-200 dark:border-zinc-800"
+                    : "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20",
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar
+                    size="sm"
+                    fallback={staff.name
+                      .split(" ")
+                      .map((p) => p[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2)}
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{staff.name}</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {staff.email}
+                    </p>
+                    {staff.warnings.length > 0 && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+                        <AlertTriangle className="size-3 min-w-3" />
+                        {staff.warnings[0].message}
+                      </div>
+                    )}
+                    {!staff.canAssign && staff.violations.length > 0 && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400">
+                        <AlertTriangle className="size-3 min-w-3" />
+                        {staff.violations[0].message}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {staff.canAssign && (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  )}
+                  <Button
+                    size="sm"
+                    variant={staff.canAssign ? "default" : "outline"}
+                    disabled={assignMutation.isPending}
+                    onClick={() => assignMutation.mutate(staff.id)}
+                  >
+                    {assignMutation.isPending &&
+                    assignMutation.variables === staff.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      "Assign"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Edit Shift Dialog
+// --------------------------------------------------------------------------
+
+function EditShiftDialog({
+  shift,
+  open,
+  onOpenChange,
+  userTimezone,
+}: {
+  shift: Shift;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  userTimezone: string;
+}) {
+  const queryClient = useQueryClient();
+
+  const shiftStart = timezone.toUserTime(shift.startTime, userTimezone);
+  const shiftEnd = timezone.toUserTime(shift.endTime, userTimezone);
+
+  const [localDate, setLocalDate] = useState(
+    shiftStart.toFormat(DATE_FORMATS.DATE_ONLY),
+  );
+  const [startTime, setStartTime] = useState(
+    shiftStart.toFormat(DATE_FORMATS.TIME_ONLY),
+  );
+  const [endTime, setEndTime] = useState(
+    shiftEnd.toFormat(DATE_FORMATS.TIME_ONLY),
+  );
+  const [requiredSkill, setRequiredSkill] = useState(shift.requiredSkill);
+  const [requiredHeadcount, setRequiredHeadcount] = useState(
+    shift.requiredHeadcount,
+  );
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      api.shifts.updateShift(shift.id, {
+        localDate,
+        startTime,
+        endTime,
+        requiredSkill,
+        requiredHeadcount,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success("Shift updated successfully");
+      onOpenChange(false);
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.shifts.deleteShift(shift.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["shifts"] });
+      toast.success("Shift deleted");
+      onOpenChange(false);
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const isPending = updateMutation.isPending || deleteMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Shift</DialogTitle>
+          <DialogDescription>
+            {shift.location?.name ?? "Unknown Location"} ·{" "}
+            {shiftStart.toFormat(DATE_FORMATS.WEEK_DAY_DATE)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Date */}
+          <div className="space-y-1.5">
+            <Label>Date</Label>
+            <Input
+              type="date"
+              value={localDate}
+              onChange={(e) => setLocalDate(e.target.value)}
+              disabled={isPending}
+            />
+          </div>
+
+          {/* Time range */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Start Time</Label>
+              <Input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>End Time</Label>
+              <Input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+          </div>
+
+          {/* Required Skill */}
+          <div className="space-y-1.5">
+            <Label>Required Skill</Label>
+            <Input
+              value={requiredSkill}
+              onChange={(e) => setRequiredSkill(e.target.value)}
+              disabled={isPending}
+            />
+          </div>
+
+          {/* Headcount */}
+          <div className="space-y-1.5">
+            <Label>Required Headcount</Label>
+            <Input
+              type="number"
+              min={1}
+              max={20}
+              value={requiredHeadcount}
+              onChange={(e) =>
+                setRequiredHeadcount(parseInt(e.target.value) || 1)
+              }
+              disabled={isPending}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="flex-row justify-between sm:justify-between">
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => deleteMutation.mutate()}
+            disabled={isPending}
+          >
+            <Trash2 className="mr-1 h-3.5 w-3.5" />
+            {deleteMutation.isPending ? "Deleting..." : "Delete"}
+          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => updateMutation.mutate()}
+              disabled={isPending}
+            >
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Page
+// --------------------------------------------------------------------------
+
 export default function SchedulePage() {
   const { user } = useAuth();
-  const userTimezone = user?.timezone ?? "UTC";
+  const userTimezone = user?.preferredTimezone ?? "UTC";
 
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [createShiftOpen, setCreateShiftOpen] = useState(false);
+  const [assignStaffOpen, setAssignStaffOpen] = useState(false);
+  const [editShiftOpen, setEditShiftOpen] = useState(false);
 
   const weekStart = useMemo(
     () =>
@@ -63,14 +570,14 @@ export default function SchedulePage() {
         .setZone(userTimezone)
         .startOf("week")
         .plus({ weeks: weekOffset }),
-    [userTimezone, weekOffset]
+    [userTimezone, weekOffset],
   );
 
   const weekEnd = useMemo(() => weekStart.endOf("week"), [weekStart]);
 
   const weekDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => weekStart.plus({ days: i })),
-    [weekStart]
+    [weekStart],
   );
 
   const weekStartISO = weekStart.toUTC().toISO() ?? "";
@@ -135,7 +642,7 @@ export default function SchedulePage() {
       2,
       ((Math.min(endMinutes, gridEnd) - Math.max(startMinutes, gridStart)) /
         totalMinutes) *
-        100
+        100,
     );
 
     return { top: `${top}%`, height: `${height}%` };
@@ -145,13 +652,9 @@ export default function SchedulePage() {
     const start = timezone.formatUserTime(
       shift.startTime,
       userTimezone,
-      "h:mm a"
+      "h:mm a",
     );
-    const end = timezone.formatUserTime(
-      shift.endTime,
-      userTimezone,
-      "h:mm a"
-    );
+    const end = timezone.formatUserTime(shift.endTime, userTimezone, "h:mm a");
     return `${start} – ${end}`;
   };
 
@@ -181,6 +684,11 @@ export default function SchedulePage() {
           <Button variant="outline" size="sm" onClick={goToNextWeek}>
             <ChevronRight className="h-4 w-4" />
           </Button>
+          <Separator orientation="vertical" className="mx-1 h-6" />
+          <Button size="sm" onClick={() => setCreateShiftOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Create Shift
+          </Button>
         </div>
       </div>
 
@@ -192,7 +700,7 @@ export default function SchedulePage() {
             "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
             viewMode === "week"
               ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50",
           )}
         >
           Week
@@ -203,7 +711,7 @@ export default function SchedulePage() {
             "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
             viewMode === "month"
               ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50",
           )}
         >
           Month
@@ -224,7 +732,12 @@ export default function SchedulePage() {
       ) : (
         <div className="flex gap-6">
           {/* Calendar Grid */}
-          <Card className={cn("flex-1 overflow-hidden", selectedShift && "lg:max-w-[calc(100%-320px)]")}>
+          <Card
+            className={cn(
+              "flex-1 overflow-hidden",
+              selectedShift && "lg:max-w-[calc(100%-320px)]",
+            )}
+          >
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <div className="min-w-[700px]">
@@ -236,7 +749,7 @@ export default function SchedulePage() {
                         key={day.toISO()}
                         className={cn(
                           "border-l border-zinc-200 p-2 text-center dark:border-zinc-800",
-                          isToday(day) && "bg-blue-50 dark:bg-blue-950/30"
+                          isToday(day) && "bg-blue-50 dark:bg-blue-950/30",
                         )}
                       >
                         <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -247,7 +760,7 @@ export default function SchedulePage() {
                             "text-lg font-semibold",
                             isToday(day)
                               ? "text-blue-600 dark:text-blue-400"
-                              : "text-zinc-900 dark:text-zinc-50"
+                              : "text-zinc-900 dark:text-zinc-50",
                           )}
                         >
                           {day.toFormat("d")}
@@ -296,7 +809,8 @@ export default function SchedulePage() {
                             key={dayKey}
                             className={cn(
                               "relative border-l border-zinc-200 dark:border-zinc-800",
-                              isToday(day) && "bg-blue-50/50 dark:bg-blue-950/10"
+                              isToday(day) &&
+                                "bg-blue-50/50 dark:bg-blue-950/10",
                             )}
                           >
                             {/* Hour lines */}
@@ -312,7 +826,7 @@ export default function SchedulePage() {
                               const pos = getShiftPosition(shift);
                               const colorClass = getLocationColor(
                                 shift.locationId,
-                                locationIds
+                                locationIds,
                               );
 
                               return (
@@ -322,14 +836,14 @@ export default function SchedulePage() {
                                     setSelectedShift(
                                       selectedShift?.id === shift.id
                                         ? null
-                                        : shift
+                                        : shift,
                                     )
                                   }
                                   className={cn(
                                     "absolute inset-x-1 overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs transition-shadow hover:shadow-md",
                                     colorClass,
                                     selectedShift?.id === shift.id &&
-                                      "ring-2 ring-zinc-900 dark:ring-zinc-50"
+                                      "ring-2 ring-zinc-900 dark:ring-zinc-50",
                                   )}
                                   style={{
                                     top: pos.top,
@@ -341,7 +855,7 @@ export default function SchedulePage() {
                                     {timezone.formatUserTime(
                                       shift.startTime,
                                       userTimezone,
-                                      "h:mm a"
+                                      "h:mm a",
                                     )}
                                   </p>
                                   <p className="truncate leading-tight opacity-75">
@@ -381,14 +895,24 @@ export default function SchedulePage() {
                       .toFormat(DATE_FORMATS.WEEK_DAY_DATE)}
                   </CardDescription>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setSelectedShift(null)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setEditShiftOpen(true)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setSelectedShift(null)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Time */}
@@ -428,39 +952,24 @@ export default function SchedulePage() {
                   <Users className="mt-0.5 h-4 w-4 text-zinc-500" />
                   <div>
                     <p className="text-sm font-medium">
-                      {selectedShift.headcount} staff required
+                      {selectedShift.requiredHeadcount} staff required
                     </p>
                   </div>
                 </div>
 
-                {/* Required Skills */}
-                {selectedShift.requiredSkills &&
-                  selectedShift.requiredSkills.length > 0 && (
-                    <>
-                      <Separator />
-                      <div className="flex items-start gap-3">
-                        <Wrench className="mt-0.5 h-4 w-4 text-zinc-500" />
-                        <div className="space-y-1.5">
-                          <p className="text-sm font-medium">Required Skills</p>
-                          <div className="flex flex-wrap gap-1">
-                            {selectedShift.requiredSkills.map((skill) => (
-                              <Badge key={skill} variant="secondary">
-                                {skill}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                {/* Description */}
-                {selectedShift.description && (
+                {/* Required Skill */}
+                {selectedShift.requiredSkill && (
                   <>
                     <Separator />
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                      {selectedShift.description}
-                    </p>
+                    <div className="flex items-start gap-3">
+                      <Wrench className="mt-0.5 h-4 w-4 text-zinc-500" />
+                      <div className="space-y-1.5">
+                        <p className="text-sm font-medium">Required Skill</p>
+                        <Badge variant="secondary">
+                          {selectedShift.requiredSkill}
+                        </Badge>
+                      </div>
+                    </div>
                   </>
                 )}
 
@@ -468,7 +977,11 @@ export default function SchedulePage() {
                 {(user?.role === "MANAGER" || user?.role === "ADMIN") && (
                   <>
                     <Separator />
-                    <Button className="w-full" size="sm">
+                    <Button
+                      className="w-full"
+                      size="sm"
+                      onClick={() => setAssignStaffOpen(true)}
+                    >
                       <Users className="mr-2 h-4 w-4" />
                       Assign Staff
                     </Button>
@@ -478,6 +991,32 @@ export default function SchedulePage() {
             </Card>
           )}
         </div>
+      )}
+
+      <CreateShiftDialog
+        open={createShiftOpen}
+        onOpenChange={setCreateShiftOpen}
+        defaultDate={weekStart.toFormat(DATE_FORMATS.DATE_ONLY)}
+      />
+
+      {selectedShift && (
+        <>
+          <AssignStaffDialog
+            shift={selectedShift}
+            open={assignStaffOpen}
+            onOpenChange={setAssignStaffOpen}
+            userTimezone={userTimezone}
+          />
+          <EditShiftDialog
+            shift={selectedShift}
+            open={editShiftOpen}
+            onOpenChange={(open) => {
+              setEditShiftOpen(open);
+              if (!open) setSelectedShift(null);
+            }}
+            userTimezone={userTimezone}
+          />
+        </>
       )}
     </div>
   );

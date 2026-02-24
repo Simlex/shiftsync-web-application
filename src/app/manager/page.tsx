@@ -1,21 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { DateTime } from "luxon";
 import {
   Users,
   Calendar,
   ClipboardList,
   BarChart3,
-  AlertTriangle,
   CheckCircle2,
   Clock,
-  UserPlus,
-  ArrowLeftRight,
   ChevronRight,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useAuth } from "@/contexts/auth-context";
-import { cn, extractData } from "@/lib/utils";
+import { extractData } from "@/lib/utils";
 import {
   Card,
   CardHeader,
@@ -24,49 +22,12 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { StatsCard, StatsCardSkeleton } from "@/components/dashboard/stats-card";
+import { useFetchUsers } from "@/hooks/users";
+import { useFetchShifts } from "@/hooks/shifts";
 import type { Location } from "@/types";
-
-// Placeholder data for manager dashboard until API is connected
-const PLACEHOLDER_LOCATIONS = [
-  { id: "1", name: "Downtown Office", totalShifts: 24, staffed: 22, unstaffed: 2 },
-  { id: "2", name: "West Branch", totalShifts: 18, staffed: 16, unstaffed: 2 },
-  { id: "3", name: "East Campus", totalShifts: 12, staffed: 12, unstaffed: 0 },
-];
-
-const PLACEHOLDER_ISSUES = [
-  {
-    id: "1",
-    type: "understaffed",
-    severity: "critical" as const,
-    title: "Understaffed: Downtown Office",
-    description: "Morning shift on Feb 24 needs 2 more staff",
-  },
-  {
-    id: "2",
-    type: "overtime",
-    severity: "warning" as const,
-    title: "Overtime Warning",
-    description: "John D. projected at 48h this week",
-  },
-  {
-    id: "3",
-    type: "expiring",
-    severity: "warning" as const,
-    title: "Expiring Drop Request",
-    description: "Drop request for Feb 23 shift expires in 4 hours",
-  },
-];
-
-const PLACEHOLDER_ACTIVITY = [
-  { id: "1", action: "Shift assigned", detail: "Jane S. → Mon 9am–5pm", time: "10 min ago", icon: UserPlus },
-  { id: "2", action: "Swap approved", detail: "Mike R. ↔ Sarah T.", time: "1 hour ago", icon: ArrowLeftRight },
-  { id: "3", action: "Schedule published", detail: "Week of Feb 23", time: "2 hours ago", icon: Calendar },
-  { id: "4", action: "New staff added", detail: "Alex M. joined the team", time: "Yesterday", icon: UserPlus },
-];
 
 export default function ManagerDashboardPage() {
   const { user } = useAuth();
@@ -98,11 +59,23 @@ export default function ManagerDashboardPage() {
     retry: false,
   });
 
+  const { data: allUsers = [], isLoading: usersLoading } = useFetchUsers();
+
+  const todayStart = DateTime.now().startOf("day").toUTC().toISO() ?? "";
+  const todayEnd = DateTime.now().endOf("day").toUTC().toISO() ?? "";
+  const { data: todayShifts = [], isLoading: todayShiftsLoading } = useFetchShifts(
+    { startDate: todayStart, endDate: todayEnd },
+    !!todayStart && !!todayEnd,
+  );
+
+  const locations = extractData(locationsData as any);
+  const staffUsers = allUsers.filter((u: any) => u.role === "STAFF" || u.role === "MANAGER");
+
   const pendingSwaps = extractData(swapsData);
   const openDrops = extractData(dropsData);
   const pendingCount = pendingSwaps.length + openDrops.length;
 
-  const isLoading = locationsLoading || swapsLoading || dropsLoading;
+  const isLoading = locationsLoading || swapsLoading || dropsLoading || usersLoading || todayShiftsLoading;
 
   return (
     <div className="space-y-6">
@@ -117,9 +90,9 @@ export default function ManagerDashboardPage() {
         <div>
           <select className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950">
             <option>All Locations</option>
-            <option>Downtown Office</option>
-            <option>West Branch</option>
-            <option>East Campus</option>
+            {locations.map((loc: any) => (
+              <option key={loc.id}>{loc.name}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -137,14 +110,13 @@ export default function ManagerDashboardPage() {
           <>
             <StatsCard
               title="Total Staff"
-              value={32}
+              value={staffUsers.length}
               icon={Users}
               iconColor="bg-blue-500"
-              trend={{ value: 5, label: "this month" }}
             />
             <StatsCard
               title="Shifts Today"
-              value={14}
+              value={todayShifts.length}
               icon={Calendar}
               iconColor="bg-emerald-500"
             />
@@ -155,11 +127,10 @@ export default function ManagerDashboardPage() {
               iconColor={pendingCount > 0 ? "bg-amber-500" : "bg-zinc-400"}
             />
             <StatsCard
-              title="Coverage Rate"
-              value="92%"
+              title="Locations"
+              value={locations.length}
               icon={BarChart3}
               iconColor="bg-purple-500"
-              trend={{ value: 3, label: "vs last week" }}
             />
           </>
         )}
@@ -186,51 +157,38 @@ export default function ManagerDashboardPage() {
               </div>
             ) : (
               <div className="space-y-5">
-                {PLACEHOLDER_LOCATIONS.map((location) => {
-                  const coveragePercent =
-                    location.totalShifts > 0
-                      ? Math.round(
-                          (location.staffed / location.totalShifts) * 100
-                        )
-                      : 100;
-                  return (
+                {locations.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-center">
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                      No locations found
+                    </p>
+                  </div>
+                ) : (
+                  locations.map((location: any) => (
                     <div key={location.id}>
                       <div className="mb-1.5 flex items-center justify-between">
                         <p className="text-sm font-medium">{location.name}</p>
                         <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                          {location.staffed}/{location.totalShifts} staffed
+                          {location.timezone}
                         </span>
                       </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                        <div
-                          className={cn(
-                            "h-full rounded-full transition-all",
-                            coveragePercent === 100
-                              ? "bg-green-500"
-                              : coveragePercent >= 80
-                                ? "bg-amber-500"
-                                : "bg-red-500"
-                          )}
-                          style={{ width: `${coveragePercent}%` }}
-                        />
-                      </div>
-                      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                        {coveragePercent}% coverage
-                        {location.unstaffed > 0 &&
-                          ` · ${location.unstaffed} unfilled`}
-                      </p>
+                      {location.address && (
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {location.address}
+                        </p>
+                      )}
                     </div>
-                  );
-                })}
+                  ))
+                )}
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Critical Issues */}
+        {/* Pending Items */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Critical Issues</CardTitle>
+            <CardTitle className="text-lg">Pending Items</CardTitle>
             <CardDescription>Items needing your attention</CardDescription>
           </CardHeader>
           <CardContent>
@@ -246,39 +204,45 @@ export default function ManagerDashboardPage() {
                   </div>
                 ))}
               </div>
-            ) : PLACEHOLDER_ISSUES.length === 0 ? (
+            ) : pendingCount === 0 ? (
               <div className="flex flex-col items-center justify-center py-6 text-center">
                 <CheckCircle2 className="mb-2 h-8 w-8 text-green-500" />
                 <p className="text-sm font-medium">All clear</p>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No critical issues at this time
+                  No pending requests at this time
                 </p>
               </div>
             ) : (
               <div className="space-y-1">
-                {PLACEHOLDER_ISSUES.map((issue, i) => (
-                  <div key={issue.id}>
-                    <button className="flex w-full items-start gap-3 rounded-lg p-2 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900">
-                      <Badge
-                        variant={
-                          issue.severity === "critical"
-                            ? "destructive"
-                            : "warning"
-                        }
-                      >
-                        {issue.severity === "critical" ? "Critical" : "Attention"}
-                      </Badge>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{issue.title}</p>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {issue.description}
-                        </p>
-                      </div>
-                      <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
-                    </button>
-                    {i < PLACEHOLDER_ISSUES.length - 1 && <Separator />}
+                {pendingSwaps.length > 0 && (
+                  <div className="flex items-start gap-3 rounded-lg p-2">
+                    <Badge variant="warning">Swaps</Badge>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        {pendingSwaps.length} pending swap request{pendingSwaps.length > 1 ? "s" : ""}
+                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        Review and approve or reject
+                      </p>
+                    </div>
+                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
                   </div>
-                ))}
+                )}
+                {pendingSwaps.length > 0 && openDrops.length > 0 && <Separator />}
+                {openDrops.length > 0 && (
+                  <div className="flex items-start gap-3 rounded-lg p-2">
+                    <Badge variant="default">Drops</Badge>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">
+                        {openDrops.length} open drop request{openDrops.length > 1 ? "s" : ""}
+                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        Shifts available for claiming
+                      </p>
+                    </div>
+                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -291,45 +255,13 @@ export default function ManagerDashboardPage() {
             <CardDescription>Latest actions across your locations</CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <div className="flex-1 space-y-1">
-                      <Skeleton className="h-4 w-40" />
-                      <Skeleton className="h-3 w-24" />
-                    </div>
-                    <Skeleton className="h-3 w-16" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {PLACEHOLDER_ACTIVITY.map((activity, i) => {
-                  const Icon = activity.icon;
-                  return (
-                    <div key={activity.id}>
-                      <div className="flex items-center gap-4 rounded-lg p-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                          <Icon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium">{activity.action}</p>
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                            {activity.detail}
-                          </p>
-                        </div>
-                        <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
-                          {activity.time}
-                        </span>
-                      </div>
-                      {i < PLACEHOLDER_ACTIVITY.length - 1 && <Separator />}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Clock className="mb-2 h-8 w-8 text-zinc-300 dark:text-zinc-600" />
+              <p className="text-sm font-medium">No recent activity</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Activity tracking will be available soon
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>

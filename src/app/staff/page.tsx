@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import {
@@ -28,12 +29,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { StatsCard, StatsCardSkeleton } from "@/components/dashboard/stats-card";
-import type { ShiftAssignment, SwapRequest, DropRequest, Notification } from "@/types";
+import {
+  StatsCard,
+  StatsCardSkeleton,
+} from "@/components/dashboard/stats-card";
+import type {
+  ShiftAssignment,
+  SwapRequest,
+  DropRequest,
+  Notification,
+} from "@/types";
 
 export default function StaffDashboardPage() {
   const { user } = useAuth();
-  const userTimezone = user?.timezone ?? "UTC";
+  const userTimezone = user?.preferredTimezone ?? "UTC";
 
   const now = DateTime.now().setZone(userTimezone);
   const todayDisplay = now.toFormat(DATE_FORMATS.WEEK_DAY_DATE);
@@ -67,12 +76,37 @@ export default function StaffDashboardPage() {
     retry: false,
   });
 
+  const weekStart = now.startOf("week").toUTC().toISO() ?? "";
+  const weekEnd = now.endOf("week").toUTC().toISO() ?? "";
+
+  const { data: weekShiftsData, isLoading: weekShiftsLoading } = useQuery({
+    queryKey: ["shifts", "week-hours", weekStart, weekEnd],
+    queryFn: async () => {
+      const res = await api.shifts.getMyShifts({
+        startDate: weekStart,
+        endDate: weekEnd,
+      });
+      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
+    },
+    enabled: !!weekStart && !!weekEnd,
+    retry: false,
+  });
+
   const shifts = extractData(shiftsData);
   const swaps = extractData(swapsData);
   const drops = extractData(dropsData);
+  const weekShifts = extractData(weekShiftsData);
+
+  const hoursThisWeek = useMemo(() => {
+    return weekShifts.reduce((total, assignment) => {
+      const start = DateTime.fromISO(assignment.shift.startTime);
+      const end = DateTime.fromISO(assignment.shift.endTime);
+      return total + end.diff(start).as("hours");
+    }, 0);
+  }, [weekShifts]);
 
   const upcomingShifts = shifts.slice(0, 5);
-  const isLoading = shiftsLoading || swapsLoading || dropsLoading;
+  const isLoading = shiftsLoading || swapsLoading || dropsLoading || weekShiftsLoading;
 
   const statusVariant = (status: string) => {
     switch (status) {
@@ -128,7 +162,7 @@ export default function StaffDashboardPage() {
             />
             <StatsCard
               title="Hours This Week"
-              value={0}
+              value={Math.round(hoursThisWeek * 10) / 10}
               subtitle={`/${user?.desiredWeeklyHours ?? 40}h`}
               icon={Clock}
               iconColor="bg-emerald-500"
@@ -186,12 +220,12 @@ export default function StaffDashboardPage() {
                     const start = timezone.formatUserTime(
                       assignment.shift.startTime,
                       userTimezone,
-                      DATE_FORMATS.DISPLAY_DATETIME
+                      DATE_FORMATS.DISPLAY_DATETIME,
                     );
                     const end = timezone.formatUserTime(
                       assignment.shift.endTime,
                       userTimezone,
-                      DATE_FORMATS.TIME_ONLY
+                      DATE_FORMATS.TIME_ONLY,
                     );
                     return (
                       <div key={assignment.id}>
@@ -199,12 +233,18 @@ export default function StaffDashboardPage() {
                           <div className="flex h-12 w-12 flex-col items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
                             <span className="text-xs font-medium leading-none">
                               {timezone
-                                .toUserTime(assignment.shift.startTime, userTimezone)
+                                .toUserTime(
+                                  assignment.shift.startTime,
+                                  userTimezone,
+                                )
                                 .toFormat("MMM")}
                             </span>
                             <span className="text-lg font-bold leading-none">
                               {timezone
-                                .toUserTime(assignment.shift.startTime, userTimezone)
+                                .toUserTime(
+                                  assignment.shift.startTime,
+                                  userTimezone,
+                                )
                                 .toFormat("d")}
                             </span>
                           </div>
@@ -213,7 +253,8 @@ export default function StaffDashboardPage() {
                               {start} – {end}
                             </p>
                             <p className="truncate text-sm text-zinc-500 dark:text-zinc-400">
-                              {assignment.shift.location?.name ?? "Unknown Location"}
+                              {assignment.shift.location?.name ??
+                                "Unknown Location"}
                             </p>
                           </div>
                           <Badge variant={statusVariant(assignment.status)}>
@@ -274,7 +315,7 @@ export default function StaffDashboardPage() {
                           {timezone.formatUserTime(
                             swap.createdAt,
                             userTimezone,
-                            DATE_FORMATS.DISPLAY_DATE
+                            DATE_FORMATS.DISPLAY_DATE,
                           )}
                         </p>
                       </div>
@@ -288,12 +329,14 @@ export default function StaffDashboardPage() {
                     >
                       <Badge variant="secondary">Drop</Badge>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">Shift drop request</p>
+                        <p className="text-sm font-medium">
+                          Shift drop request
+                        </p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {timezone.formatUserTime(
                             drop.createdAt,
                             userTimezone,
-                            DATE_FORMATS.DISPLAY_DATE
+                            DATE_FORMATS.DISPLAY_DATE,
                           )}
                         </p>
                       </div>

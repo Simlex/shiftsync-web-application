@@ -20,7 +20,7 @@ import { timezone } from "@/lib/timezone";
 import { useAuth } from "@/contexts/auth-context";
 import { DATE_FORMATS } from "@/constants";
 import { cn, extractData } from "@/lib/utils";
-import { useToast } from "@/hooks";
+import { useToast } from "@/app/client-hooks";
 import {
   Card,
   CardHeader,
@@ -34,11 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import type {
-  DropRequest,
-  DropRequestStatus,
-  ShiftAssignment,
-} from "@/types";
+import type { DropRequest, DropRequestStatus, ShiftAssignment } from "@/types";
 
 type Tab = "my-drops" | "open-board" | "create";
 
@@ -67,7 +63,7 @@ export default function DropsPage() {
   const { user } = useAuth();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const userTimezone = user?.timezone ?? "UTC";
+  const userTimezone = user?.preferredTimezone ?? "UTC";
 
   const [activeTab, setActiveTab] = useState<Tab>("my-drops");
   const [confirmClaimId, setConfirmClaimId] = useState<string | null>(null);
@@ -114,7 +110,10 @@ export default function DropsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["drops"] });
       setConfirmClaimId(null);
-      toast.success("Shift Claimed", "You have successfully claimed this shift.");
+      toast.success(
+        "Shift Claimed",
+        "You have successfully claimed this shift.",
+      );
     },
     onError: (error: unknown) => {
       toast.error("Failed to Claim", getErrorMessage(error));
@@ -124,9 +123,8 @@ export default function DropsPage() {
   const createMutation = useMutation({
     mutationFn: () => {
       const expiresAt = expiryDate
-        ? timezone
-            .toUTC(expiryTime, expiryDate, userTimezone)
-            .toISO() ?? undefined
+        ? (timezone.toUTC(expiryTime, expiryDate, userTimezone).toISO() ??
+          undefined)
         : undefined;
       return api.drops.createDrop({
         shiftId: selectedShiftId,
@@ -201,8 +199,7 @@ export default function DropsPage() {
       <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
         {TABS.map((tab) => {
           const Icon = tab.icon;
-          const count =
-            tab.id === "open-board" ? openDrops.length : undefined;
+          const count = tab.id === "open-board" ? openDrops.length : undefined;
           return (
             <button
               key={tab.id}
@@ -274,7 +271,8 @@ export default function DropsPage() {
                             : "Shift details unavailable"}
                         </p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {drop.shift?.shift?.location?.name ?? "Unknown Location"}
+                          {drop.shift?.shift?.location?.name ??
+                            "Unknown Location"}
                         </p>
                         {drop.reason && (
                           <p className="mt-1 text-xs italic text-zinc-400">
@@ -370,7 +368,8 @@ export default function DropsPage() {
                               : ""}
                           </p>
                           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                            {drop.shift?.shift?.location?.name ?? "Unknown Location"}
+                            {drop.shift?.shift?.location?.name ??
+                              "Unknown Location"}
                             {" · "}
                             Originally: {drop.user?.name ?? "Unknown"}
                           </p>
@@ -512,9 +511,7 @@ export default function DropsPage() {
 
               <Button
                 onClick={() => createMutation.mutate()}
-                disabled={
-                  !selectedShiftId || createMutation.isPending
-                }
+                disabled={!selectedShiftId || createMutation.isPending}
               >
                 {createMutation.isPending ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

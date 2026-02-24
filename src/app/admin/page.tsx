@@ -1,20 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import {
   Users,
   MapPin,
   Calendar,
   Activity,
-  Settings,
-  ShieldCheck,
-  Building2,
+  BarChart3,
+  ClipboardList,
   UserCog,
   ChevronRight,
-  CheckCircle2,
-  AlertCircle,
-  UserPlus,
 } from "lucide-react";
+import { DateTime } from "luxon";
 import { cn } from "@/lib/utils";
+import { ROUTES } from "@/constants/routes";
 import {
   Card,
   CardHeader,
@@ -22,87 +21,62 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { StatsCard } from "@/components/dashboard/stats-card";
-
-// Placeholder metrics
-const SYSTEM_METRICS = [
-  { label: "Total Shifts (This Week)", value: "156" },
-  { label: "Shift Fill Rate", value: "94%" },
-  { label: "Avg Hours / Staff", value: "34.2h" },
-  { label: "Swap Success Rate", value: "87%" },
-  { label: "Active Drop Requests", value: "3" },
-  { label: "Overtime Incidents", value: "2" },
-];
+import {
+  StatsCard,
+  StatsCardSkeleton,
+} from "@/components/dashboard/stats-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useFetchUsers } from "@/hooks/users";
+import { useFetchLocations } from "@/hooks/locations";
+import { useFetchShifts } from "@/hooks/shifts";
+import { User } from "@/types";
 
 const QUICK_ACTIONS = [
   {
-    id: "users",
-    title: "Manage Users",
-    description: "Add, edit, or deactivate user accounts",
+    id: "staff",
+    title: "Staff Management",
+    description: "Manage users, roles, and permissions",
     icon: UserCog,
+    href: ROUTES.ADMIN_STAFF,
   },
   {
-    id: "roles",
-    title: "Roles & Permissions",
-    description: "Configure role-based access control",
-    icon: ShieldCheck,
+    id: "schedule",
+    title: "Schedule Management",
+    description: "Create and manage work schedules",
+    icon: Calendar,
+    href: ROUTES.ADMIN_SCHEDULE,
   },
   {
-    id: "locations",
-    title: "Manage Locations",
-    description: "Add or configure work locations",
-    icon: Building2,
+    id: "requests",
+    title: "Request Management",
+    description: "Review shift swaps, drops, and requests",
+    icon: ClipboardList,
+    href: ROUTES.ADMIN_REQUESTS,
   },
   {
-    id: "settings",
-    title: "System Settings",
-    description: "Configure global application settings",
-    icon: Settings,
-  },
-];
-
-const RECENT_ACTIVITY = [
-  {
-    id: "1",
-    action: "User created",
-    detail: "admin@example.com added new user Maria K.",
-    time: "15 min ago",
-    type: "info" as const,
-  },
-  {
-    id: "2",
-    action: "Location added",
-    detail: 'New location "North Campus" created',
-    time: "1 hour ago",
-    type: "info" as const,
-  },
-  {
-    id: "3",
-    action: "Role updated",
-    detail: "James T. promoted to Manager",
-    time: "3 hours ago",
-    type: "info" as const,
-  },
-  {
-    id: "4",
-    action: "System alert",
-    detail: "High API latency detected (resolved)",
-    time: "Yesterday",
-    type: "warning" as const,
-  },
-  {
-    id: "5",
-    action: "Backup completed",
-    detail: "Daily database backup successful",
-    time: "Yesterday",
-    type: "success" as const,
+    id: "analytics",
+    title: "Analytics",
+    description: "View reports and system analytics",
+    icon: BarChart3,
+    href: ROUTES.ADMIN_ANALYTICS,
   },
 ];
 
 export default function AdminDashboardPage() {
+  const { data: users = [], isLoading: usersLoading } = useFetchUsers();
+  const { data: locations = [], isLoading: locationsLoading } =
+    useFetchLocations();
+
+  const weekStart = DateTime.now().startOf("week").toUTC().toISO() ?? "";
+  const weekEnd = DateTime.now().endOf("week").toUTC().toISO() ?? "";
+  const { data: shifts = [], isLoading: shiftsLoading } = useFetchShifts(
+    { startDate: weekStart, endDate: weekEnd },
+    !!weekStart && !!weekEnd,
+  );
+
+  const isLoading = usersLoading || locationsLoading || shiftsLoading;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -115,32 +89,41 @@ export default function AdminDashboardPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="Total Users"
-          value={128}
-          icon={Users}
-          iconColor="bg-blue-500"
-          trend={{ value: 12, label: "this month" }}
-        />
-        <StatsCard
-          title="Active Locations"
-          value={8}
-          icon={MapPin}
-          iconColor="bg-emerald-500"
-        />
-        <StatsCard
-          title="Shifts This Week"
-          value={156}
-          icon={Calendar}
-          iconColor="bg-amber-500"
-          trend={{ value: 8, label: "vs last week" }}
-        />
-        <StatsCard
-          title="System Health"
-          value="Operational"
-          icon={Activity}
-          iconColor="bg-green-500"
-        />
+        {isLoading ? (
+          <>
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+            <StatsCardSkeleton />
+          </>
+        ) : (
+          <>
+            <StatsCard
+              title="Total Users"
+              value={users.length}
+              icon={Users}
+              iconColor="bg-blue-500"
+            />
+            <StatsCard
+              title="Active Locations"
+              value={locations.length}
+              icon={MapPin}
+              iconColor="bg-emerald-500"
+            />
+            <StatsCard
+              title="Shifts This Week"
+              value={shifts.length}
+              icon={Calendar}
+              iconColor="bg-amber-500"
+            />
+            <StatsCard
+              title="System Health"
+              value="Operational"
+              icon={Activity}
+              iconColor="bg-green-500"
+            />
+          </>
+        )}
       </div>
 
       {/* Grid layout */}
@@ -152,19 +135,58 @@ export default function AdminDashboardPage() {
             <CardDescription>Key metrics at a glance</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              {SYSTEM_METRICS.map((metric) => (
-                <div
-                  key={metric.label}
-                  className="rounded-lg border border-zinc-100 p-3 dark:border-zinc-800"
-                >
-                  <p className="text-2xl font-bold">{metric.value}</p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {metric.label}
-                  </p>
-                </div>
-              ))}
-            </div>
+            {isLoading ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg border border-zinc-100 p-3 dark:border-zinc-800"
+                  >
+                    <Skeleton className="h-8 w-16 mb-1" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {[
+                  {
+                    label: "Total Shifts (This Week)",
+                    value: String(shifts.length),
+                  },
+                  {
+                    label: "Active Staff",
+                    value: String(
+                      users.filter((u: User) => u.role === "STAFF").length,
+                    ),
+                  },
+                  {
+                    label: "Managers",
+                    value: String(
+                      users.filter((u: User) => u.role === "MANAGER").length,
+                    ),
+                  },
+                  { label: "Locations", value: String(locations.length) },
+                  { label: "Total Users", value: String(users.length) },
+                  {
+                    label: "Admins",
+                    value: String(
+                      users.filter((u: User) => u.role === "ADMIN").length,
+                    ),
+                  },
+                ].map((metric) => (
+                  <div
+                    key={metric.label}
+                    className="rounded-lg border border-zinc-100 p-3 dark:border-zinc-800"
+                  >
+                    <p className="text-2xl font-bold">{metric.value}</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      {metric.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -180,7 +202,10 @@ export default function AdminDashboardPage() {
                 const Icon = action.icon;
                 return (
                   <div key={action.id}>
-                    <button className="flex w-full items-center gap-4 rounded-lg p-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                    <Link
+                      href={action.href}
+                      className="flex w-full items-center gap-4 rounded-lg p-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                    >
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
                         <Icon className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
                       </div>
@@ -191,7 +216,7 @@ export default function AdminDashboardPage() {
                         </p>
                       </div>
                       <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
-                    </button>
+                    </Link>
                     {i < QUICK_ACTIONS.length - 1 && <Separator />}
                   </div>
                 );
@@ -207,44 +232,12 @@ export default function AdminDashboardPage() {
             <CardDescription>Admin-level activity log</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-1">
-              {RECENT_ACTIVITY.map((activity, i) => {
-                const iconMap = {
-                  info: AlertCircle,
-                  warning: AlertCircle,
-                  success: CheckCircle2,
-                };
-                const colorMap = {
-                  info: "text-blue-500",
-                  warning: "text-amber-500",
-                  success: "text-green-500",
-                };
-                const Icon = iconMap[activity.type];
-                return (
-                  <div key={activity.id}>
-                    <div className="flex items-center gap-4 rounded-lg p-2">
-                      <div
-                        className={cn(
-                          "flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800",
-                          colorMap[activity.type]
-                        )}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">{activity.action}</p>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {activity.detail}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
-                        {activity.time}
-                      </span>
-                    </div>
-                    {i < RECENT_ACTIVITY.length - 1 && <Separator />}
-                  </div>
-                );
-              })}
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Activity className="mb-2 h-8 w-8 text-zinc-300 dark:text-zinc-600" />
+              <p className="text-sm font-medium">No recent activity</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Activity tracking will be available soon
+              </p>
             </div>
           </CardContent>
         </Card>

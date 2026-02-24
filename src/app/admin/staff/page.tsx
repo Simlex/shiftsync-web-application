@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DateTime } from "luxon";
+import { toast } from "sonner";
 import {
   Search,
   UserPlus,
@@ -9,11 +12,18 @@ import {
   Shield,
   X,
   Calendar,
+  ChevronLeft,
   ChevronRight,
   Users,
 } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { api, getErrorMessage } from "@/lib/api-client";
+import { timezone } from "@/lib/timezone";
 import { useAuth } from "@/contexts/auth-context";
-import { ROUTES } from "@/constants/routes";
+import { DATE_FORMATS } from "@/constants";
+import { extractData } from "@/lib/utils";
 import {
   Card,
   CardHeader,
@@ -27,90 +37,72 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Avatar } from "@/components/ui/avatar";
-import type { User, UserRole } from "@/types";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { User, UserRole, Shift, CreateUser } from "@/types";
+import { useFetchUsers } from "@/hooks/users";
 
 // --------------------------------------------------------------------------
 // Role badge configuration
 // --------------------------------------------------------------------------
 
-const ROLE_BADGE_STYLES: Record<UserRole, { label: string; className: string }> = {
+const ROLE_BADGE_STYLES: Record<
+  UserRole,
+  { label: string; className: string }
+> = {
   ADMIN: {
     label: "Admin",
-    className: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+    className:
+      "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   },
   MANAGER: {
     label: "Manager",
-    className: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+    className:
+      "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
   },
   STAFF: {
     label: "Staff",
-    className: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+    className:
+      "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
   },
 };
 
+// --------------------------------------------------------------------------
+// Form validation schema
+// --------------------------------------------------------------------------
+
+const createUserSchema = z.object({
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  name: z.string().min(1, "Name is required"),
+  role: z.enum(["STAFF", "MANAGER", "ADMIN"] as const).optional(),
+  preferredTimezone: z.string().optional(),
+  desiredWeeklyHours: z.number().min(0).max(80).optional(),
+});
+
 type RoleFilter = "ALL" | UserRole;
-
-// --------------------------------------------------------------------------
-// Placeholder data – ready to replace with API integration
-// --------------------------------------------------------------------------
-
-const PLACEHOLDER_STAFF: User[] = [
-  {
-    id: "1",
-    name: "Jane Smith",
-    email: "jane.smith@example.com",
-    role: "MANAGER",
-    timezone: "America/New_York",
-    skills: ["Opening", "Closing", "Training"],
-    desiredWeeklyHours: 40,
-    createdAt: "2025-08-01T00:00:00Z",
-    updatedAt: "2026-02-01T00:00:00Z",
-  },
-  {
-    id: "2",
-    name: "Mike Rivera",
-    email: "mike.r@example.com",
-    role: "STAFF",
-    timezone: "America/Chicago",
-    skills: ["Register", "Stocking"],
-    desiredWeeklyHours: 30,
-    createdAt: "2025-09-15T00:00:00Z",
-    updatedAt: "2026-01-20T00:00:00Z",
-  },
-  {
-    id: "3",
-    name: "Sarah Thompson",
-    email: "sarah.t@example.com",
-    role: "STAFF",
-    timezone: "America/Los_Angeles",
-    skills: ["Register"],
-    desiredWeeklyHours: 25,
-    createdAt: "2025-10-01T00:00:00Z",
-    updatedAt: "2026-02-10T00:00:00Z",
-  },
-  {
-    id: "4",
-    name: "Alex Morgan",
-    email: "alex.m@example.com",
-    role: "ADMIN",
-    timezone: "America/New_York",
-    skills: ["Opening", "Closing", "Training", "Inventory"],
-    desiredWeeklyHours: 40,
-    createdAt: "2025-06-01T00:00:00Z",
-    updatedAt: "2026-02-15T00:00:00Z",
-  },
-  {
-    id: "5",
-    name: "Jordan Lee",
-    email: "jordan.l@example.com",
-    role: "STAFF",
-    timezone: "America/Denver",
-    skills: ["Stocking", "Inventory"],
-    desiredWeeklyHours: 20,
-    createdAt: "2025-11-01T00:00:00Z",
-    updatedAt: "2026-01-28T00:00:00Z",
-  },
-];
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -154,6 +146,267 @@ function StaffCardSkeleton() {
   );
 }
 
+function EditRoleDialog({
+  member,
+  open,
+  onOpenChange,
+}: {
+  member: User;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [selectedRole, setSelectedRole] = useState<UserRole>(member.role);
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: (role: UserRole) => api.users.updateUser(member.id, { role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success(`${member.name}'s role updated to ${selectedRole}`);
+      onOpenChange(false);
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const hasChanged = selectedRole !== member.role;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Role</DialogTitle>
+          <DialogDescription>
+            Change the role for {member.name} ({member.email})
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <Label>Role</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {(["STAFF", "MANAGER"] as const).map((role) => {
+              const style = ROLE_BADGE_STYLES[role];
+              const isSelected = selectedRole === role;
+              return (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => setSelectedRole(role)}
+                  className={`flex items-center gap-2 rounded-lg border-2 p-3 text-left text-sm transition-colors ${
+                    isSelected
+                      ? "border-zinc-900 dark:border-zinc-100"
+                      : "border-zinc-200 hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
+                  }`}
+                >
+                  <Badge variant="outline" className={style.className}>
+                    {style.label}
+                  </Badge>
+                </button>
+              );
+            })}
+          </div>
+          {selectedRole !== member.role && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              This will change {member.name}&apos;s permissions immediately.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={mutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => mutation.mutate(selectedRole)}
+            disabled={!hasChanged || mutation.isPending}
+          >
+            {mutation.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ViewScheduleDialog({
+  member,
+  open,
+  onOpenChange,
+}: {
+  member: User;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [weekStart, setWeekStart] = useState(() =>
+    DateTime.now().startOf("week"),
+  );
+  const weekEnd = weekStart.endOf("week");
+
+  const { data: shiftsRaw, isLoading } = useQuery({
+    queryKey: ["shifts", "schedule", member.id, weekStart.toISODate()],
+    queryFn: async () => {
+      const res = await api.shifts.getShifts({
+        userId: member.id,
+        startDate: weekStart.toISO()!,
+        endDate: weekEnd.toISO()!,
+      });
+      return res.data as { data: Shift[] } | Shift[];
+    },
+    enabled: open,
+  });
+
+  const shifts = extractData(shiftsRaw ?? []);
+
+  const shiftsByDay = useMemo(() => {
+    const grouped: Record<string, Shift[]> = {};
+    for (const shift of shifts) {
+      const dayKey = DateTime.fromISO(shift.startTime).toFormat(
+        DATE_FORMATS.DATE_ONLY,
+      );
+      if (!grouped[dayKey]) grouped[dayKey] = [];
+      grouped[dayKey].push(shift);
+    }
+    // Sort shifts within each day
+    for (const key of Object.keys(grouped)) {
+      grouped[key].sort(
+        (a, b) =>
+          DateTime.fromISO(a.startTime).toMillis() -
+          DateTime.fromISO(b.startTime).toMillis(),
+      );
+    }
+    return grouped;
+  }, [shifts]);
+
+  const goToPrevWeek = useCallback(
+    () => setWeekStart((w) => w.minus({ weeks: 1 })),
+    [],
+  );
+  const goToNextWeek = useCallback(
+    () => setWeekStart((w) => w.plus({ weeks: 1 })),
+    [],
+  );
+  const goToThisWeek = useCallback(
+    () => setWeekStart(DateTime.now().startOf("week")),
+    [],
+  );
+
+  // Generate all 7 days of the week for the grid
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => weekStart.plus({ days: i })),
+    [weekStart],
+  );
+
+  const isCurrentWeek =
+    weekStart.toISODate() === DateTime.now().startOf("week").toISODate();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Schedule — {member.name}</DialogTitle>
+          <DialogDescription>
+            Week of {weekStart.toFormat(DATE_FORMATS.DISPLAY_DATE)} –{" "}
+            {weekEnd.toFormat(DATE_FORMATS.DISPLAY_DATE)}
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Week navigation */}
+        <div className="flex items-center justify-between">
+          <Button variant="outline" size="icon" onClick={goToPrevWeek}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={goToThisWeek}
+            disabled={isCurrentWeek}
+          >
+            Today
+          </Button>
+          <Button variant="outline" size="icon" onClick={goToNextWeek}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Schedule grid */}
+        <div className="max-h-80 space-y-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : (
+            weekDays.map((day) => {
+              const key = day.toFormat(DATE_FORMATS.DATE_ONLY);
+              const dayShifts = shiftsByDay[key] ?? [];
+              const isToday = day.toISODate() === DateTime.now().toISODate();
+
+              return (
+                <div
+                  key={key}
+                  className={`rounded-md border p-2 ${
+                    isToday
+                      ? "border-blue-300 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-950/30"
+                      : "border-zinc-100 dark:border-zinc-800"
+                  }`}
+                >
+                  <p className="text-xs font-semibold">
+                    {day.toFormat(DATE_FORMATS.WEEK_DAY_DATE)}
+                    {isToday && (
+                      <span className="ml-1.5 text-[10px] font-normal text-blue-600 dark:text-blue-400">
+                        Today
+                      </span>
+                    )}
+                  </p>
+                  {dayShifts.length === 0 ? (
+                    <p className="mt-0.5 text-[11px] text-zinc-400 dark:text-zinc-500">
+                      No shifts
+                    </p>
+                  ) : (
+                    <div className="mt-1 space-y-1">
+                      {dayShifts.map((shift) => (
+                        <div
+                          key={shift.id}
+                          className="flex items-center justify-between rounded bg-zinc-50 px-2 py-1 text-xs dark:bg-zinc-900"
+                        >
+                          <span className="font-medium">
+                            {DateTime.fromISO(shift.startTime).toFormat(
+                              DATE_FORMATS.TIME_ONLY,
+                            )}{" "}
+                            –{" "}
+                            {DateTime.fromISO(shift.endTime).toFormat(
+                              DATE_FORMATS.TIME_ONLY,
+                            )}
+                          </span>
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {shift.location?.name ?? "—"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function StaffDetailPanel({
   member,
   onClose,
@@ -162,6 +415,37 @@ function StaffDetailPanel({
   onClose: () => void;
 }) {
   const roleStyle = ROLE_BADGE_STYLES[member.role];
+  const [editRoleOpen, setEditRoleOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  const isStaff = member.role === "STAFF";
+
+  const { data: shiftsData, isLoading: shiftsLoading } = useQuery({
+    queryKey: ["shifts", "user", member.id],
+    queryFn: async () => {
+      const res = await api.shifts.getShifts({ userId: member.id });
+      return res.data as { data: Shift[] } | Shift[];
+    },
+    enabled: isStaff,
+  });
+
+  const { data: availabilityData, isLoading: availabilityLoading } = useQuery({
+    queryKey: ["availability", member.id],
+    queryFn: async () => {
+      const res = await api.users.getUser(member.id);
+      return res.data;
+    },
+  });
+
+  const recentShifts = extractData(shiftsData)
+    .sort(
+      (a, b) =>
+        DateTime.fromISO(b.startTime).toMillis() -
+        DateTime.fromISO(a.startTime).toMillis(),
+    )
+    .slice(0, 5);
+
+  const userAvailability = (availabilityData as any)?.availability ?? [];
 
   return (
     <Card>
@@ -194,7 +478,7 @@ function StaffDetailPanel({
             </p>
             <p className="flex items-center gap-1 text-sm">
               <MapPin className="h-3.5 w-3.5" />
-              {formatTimezone(member.timezone)}
+              {formatTimezone(member.preferredTimezone)}
             </p>
           </div>
           <div className="space-y-1">
@@ -237,39 +521,326 @@ function StaffDetailPanel({
           </div>
         </div>
 
-        <Separator />
+        {isStaff && (
+          <>
+            <Separator />
 
-        {/* Recent shifts summary */}
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Recent Shifts</p>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            No recent shift data available.
-          </p>
-        </div>
+            {/* Recent shifts summary */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Recent Shifts</p>
+              {shiftsLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-4 w-full" />
+                  ))}
+                </div>
+              ) : recentShifts.length === 0 ? (
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  No shifts found for this user.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {recentShifts.map((shift) => (
+                    <div
+                      key={shift.id}
+                      className="flex items-center justify-between rounded-md border border-zinc-100 p-2 text-xs dark:border-zinc-800"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {DateTime.fromISO(shift.startTime).toFormat(
+                            DATE_FORMATS.DISPLAY_DATE,
+                          )}
+                        </p>
+                        <p className="text-zinc-500 dark:text-zinc-400">
+                          {DateTime.fromISO(shift.startTime).toFormat(
+                            DATE_FORMATS.TIME_ONLY,
+                          )}{" "}
+                          –{" "}
+                          {DateTime.fromISO(shift.endTime).toFormat(
+                            DATE_FORMATS.TIME_ONLY,
+                          )}
+                        </p>
+                      </div>
+                      <p className="text-zinc-500 dark:text-zinc-400">
+                        {shift.location?.name ?? "Unknown"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
-        <Separator />
+        {isStaff && (
+          <>
+            <Separator />
 
-        {/* Availability overview */}
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Availability</p>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Availability data will appear once the schedule module is connected.
-          </p>
-        </div>
+            {/* Availability overview */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Availability</p>
+              {availabilityLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-4 w-full" />
+                  ))}
+                </div>
+              ) : userAvailability.length === 0 ? (
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  No availability data set.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {userAvailability.map((avail: any, i: number) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <span className="font-medium">
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
+                          avail.dayOfWeek
+                        ] ?? `Day ${avail.dayOfWeek}`}
+                      </span>
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {avail.startTime} – {avail.endTime}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {/* Quick actions */}
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Shield className="h-4 w-4" />
-            Edit Role
-          </Button>
-          <Button variant="outline" size="sm">
-            <Calendar className="h-4 w-4" />
-            View Schedule
-          </Button>
+          {member.role !== "ADMIN" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditRoleOpen(true)}
+            >
+              <Shield className="h-4 w-4" />
+              Edit Role
+            </Button>
+          )}
+          {isStaff && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setScheduleOpen(true)}
+            >
+              <Calendar className="h-4 w-4" />
+              View Schedule
+            </Button>
+          )}
         </div>
       </CardContent>
+
+      {isStaff && (
+        <ViewScheduleDialog
+          member={member}
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+        />
+      )}
+
+      {member.role !== "ADMIN" && (
+        <EditRoleDialog
+          member={member}
+          open={editRoleOpen}
+          onOpenChange={setEditRoleOpen}
+        />
+      )}
     </Card>
+  );
+}
+
+// --------------------------------------------------------------------------
+// Add Staff Dialog
+// --------------------------------------------------------------------------
+
+function AddStaffDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const form = useForm<z.infer<typeof createUserSchema>>({
+    resolver: zodResolver(createUserSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      name: "",
+      role: "STAFF",
+      preferredTimezone: "UTC",
+      desiredWeeklyHours: 40,
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (data: CreateUser) => api.users.createUser(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("Staff member added successfully");
+      onOpenChange(false);
+      form.reset();
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const onSubmit = (data: z.infer<typeof createUserSchema>) => {
+    mutation.mutate(data);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add New Staff Member</DialogTitle>
+          <DialogDescription>
+            Create a new staff member account. They will receive login
+            credentials via email.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Full Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Enter full name" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email Address</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="email"
+                      placeholder="Enter email address"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Temporary Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="password"
+                      placeholder="Enter temporary password"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Role</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a role" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="STAFF">Staff</SelectItem>
+                      <SelectItem value="MANAGER">Manager</SelectItem>
+                      <SelectItem value="ADMIN">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="preferredTimezone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Timezone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="UTC" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="desiredWeeklyHours"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Weekly Hours</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="80"
+                        placeholder="40"
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={mutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={mutation.isPending}>
+                {mutation.isPending ? "Adding..." : "Add Staff Member"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -282,11 +853,9 @@ export default function StaffManagementPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [addStaffOpen, setAddStaffOpen] = useState(false);
 
-  // For now, use placeholder data since there's no /users list endpoint.
-  // The component is ready to integrate when the API is available.
-  const isLoading = false;
-  const staff = PLACEHOLDER_STAFF;
+  const { data: staff = [], isLoading } = useFetchUsers();
 
   const filteredStaff = useMemo(() => {
     return staff.filter((member) => {
@@ -294,12 +863,10 @@ export default function StaffManagementPage() {
         search === "" ||
         member.name.toLowerCase().includes(search.toLowerCase()) ||
         member.email.toLowerCase().includes(search.toLowerCase());
-      const matchesRole =
-        roleFilter === "ALL" || member.role === roleFilter;
+      const matchesRole = roleFilter === "ALL" || member.role === roleFilter;
       return matchesSearch && matchesRole;
     });
   }, [staff, search, roleFilter]);
-
   const selectedMember = staff.find((m) => m.id === selectedMemberId) ?? null;
 
   return (
@@ -314,7 +881,7 @@ export default function StaffManagementPage() {
             Manage your team members and their roles
           </p>
         </div>
-        <Button>
+        <Button onClick={() => setAddStaffOpen(true)}>
           <UserPlus className="h-4 w-4" />
           Add Staff
         </Button>
@@ -355,7 +922,7 @@ export default function StaffManagementPage() {
             </div>
           ) : filteredStaff.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
+              <CardContent className="flex flex-col items-center justify-center py-12!">
                 <Users className="mb-3 h-10 w-10 text-zinc-300 dark:text-zinc-600" />
                 <p className="text-sm font-medium">No staff found</p>
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -375,9 +942,7 @@ export default function StaffManagementPage() {
                   <Card
                     key={member.id}
                     className={`cursor-pointer transition-colors hover:border-zinc-400 dark:hover:border-zinc-600 ${
-                      isSelected
-                        ? "border-zinc-900 dark:border-zinc-100"
-                        : ""
+                      isSelected ? "border-zinc-900 dark:border-zinc-100" : ""
                     }`}
                     onClick={() =>
                       setSelectedMemberId(isSelected ? null : member.id)
@@ -385,10 +950,7 @@ export default function StaffManagementPage() {
                   >
                     <CardContent className="p-5">
                       <div className="flex items-start gap-3">
-                        <Avatar
-                          size="lg"
-                          fallback={getInitials(member.name)}
-                        />
+                        <Avatar size="lg" fallback={getInitials(member.name)} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold">
                             {member.name}
@@ -438,7 +1000,7 @@ export default function StaffManagementPage() {
                       <div className="mt-3 flex items-center gap-4 text-xs text-zinc-500 dark:text-zinc-400">
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
-                          {formatTimezone(member.timezone)}
+                          {formatTimezone(member.preferredTimezone)}
                         </span>
                         {member.desiredWeeklyHours != null && (
                           <span className="flex items-center gap-1">
@@ -465,6 +1027,8 @@ export default function StaffManagementPage() {
           </div>
         )}
       </div>
+
+      <AddStaffDialog open={addStaffOpen} onOpenChange={setAddStaffOpen} />
     </div>
   );
 }

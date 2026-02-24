@@ -51,7 +51,7 @@ function getLocationColor(locationId: string, locationIds: string[]): string {
 
 export default function SchedulePage() {
   const { user } = useAuth();
-  const userTimezone = user?.timezone ?? "UTC";
+  const userTimezone = user?.preferredTimezone ?? "UTC";
 
   const [viewMode, setViewMode] = useState<ViewMode>("week");
   const [weekOffset, setWeekOffset] = useState(0);
@@ -63,14 +63,14 @@ export default function SchedulePage() {
         .setZone(userTimezone)
         .startOf("week")
         .plus({ weeks: weekOffset }),
-    [userTimezone, weekOffset]
+    [userTimezone, weekOffset],
   );
 
   const weekEnd = useMemo(() => weekStart.endOf("week"), [weekStart]);
 
   const weekDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => weekStart.plus({ days: i })),
-    [weekStart]
+    [weekStart],
   );
 
   const weekStartISO = weekStart.toUTC().toISO() ?? "";
@@ -135,7 +135,7 @@ export default function SchedulePage() {
       2,
       ((Math.min(endMinutes, gridEnd) - Math.max(startMinutes, gridStart)) /
         totalMinutes) *
-        100
+        100,
     );
 
     return { top: `${top}%`, height: `${height}%` };
@@ -145,13 +145,9 @@ export default function SchedulePage() {
     const start = timezone.formatUserTime(
       shift.startTime,
       userTimezone,
-      "h:mm a"
+      "h:mm a",
     );
-    const end = timezone.formatUserTime(
-      shift.endTime,
-      userTimezone,
-      "h:mm a"
-    );
+    const end = timezone.formatUserTime(shift.endTime, userTimezone, "h:mm a");
     return `${start} – ${end}`;
   };
 
@@ -192,7 +188,7 @@ export default function SchedulePage() {
             "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
             viewMode === "week"
               ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50",
           )}
         >
           Week
@@ -203,7 +199,7 @@ export default function SchedulePage() {
             "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
             viewMode === "month"
               ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+              : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50",
           )}
         >
           Month
@@ -224,7 +220,12 @@ export default function SchedulePage() {
       ) : (
         <div className="flex gap-6">
           {/* Calendar Grid */}
-          <Card className={cn("flex-1 overflow-hidden", selectedShift && "lg:max-w-[calc(100%-320px)]")}>
+          <Card
+            className={cn(
+              "flex-1 overflow-hidden",
+              selectedShift && "lg:max-w-[calc(100%-320px)]",
+            )}
+          >
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <div className="min-w-[700px]">
@@ -236,7 +237,7 @@ export default function SchedulePage() {
                         key={day.toISO()}
                         className={cn(
                           "border-l border-zinc-200 p-2 text-center dark:border-zinc-800",
-                          isToday(day) && "bg-blue-50 dark:bg-blue-950/30"
+                          isToday(day) && "bg-blue-50 dark:bg-blue-950/30",
                         )}
                       >
                         <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -247,7 +248,7 @@ export default function SchedulePage() {
                             "text-lg font-semibold",
                             isToday(day)
                               ? "text-blue-600 dark:text-blue-400"
-                              : "text-zinc-900 dark:text-zinc-50"
+                              : "text-zinc-900 dark:text-zinc-50",
                           )}
                         >
                           {day.toFormat("d")}
@@ -296,7 +297,8 @@ export default function SchedulePage() {
                             key={dayKey}
                             className={cn(
                               "relative border-l border-zinc-200 dark:border-zinc-800",
-                              isToday(day) && "bg-blue-50/50 dark:bg-blue-950/10"
+                              isToday(day) &&
+                                "bg-blue-50/50 dark:bg-blue-950/10",
                             )}
                           >
                             {/* Hour lines */}
@@ -312,7 +314,7 @@ export default function SchedulePage() {
                               const pos = getShiftPosition(shift);
                               const colorClass = getLocationColor(
                                 shift.locationId,
-                                locationIds
+                                locationIds,
                               );
 
                               return (
@@ -322,14 +324,14 @@ export default function SchedulePage() {
                                     setSelectedShift(
                                       selectedShift?.id === shift.id
                                         ? null
-                                        : shift
+                                        : shift,
                                     )
                                   }
                                   className={cn(
                                     "absolute inset-x-1 overflow-hidden rounded-md border px-1.5 py-1 text-left text-xs transition-shadow hover:shadow-md",
                                     colorClass,
                                     selectedShift?.id === shift.id &&
-                                      "ring-2 ring-zinc-900 dark:ring-zinc-50"
+                                      "ring-2 ring-zinc-900 dark:ring-zinc-50",
                                   )}
                                   style={{
                                     top: pos.top,
@@ -341,7 +343,7 @@ export default function SchedulePage() {
                                     {timezone.formatUserTime(
                                       shift.startTime,
                                       userTimezone,
-                                      "h:mm a"
+                                      "h:mm a",
                                     )}
                                   </p>
                                   <p className="truncate leading-tight opacity-75">
@@ -428,39 +430,24 @@ export default function SchedulePage() {
                   <Users className="mt-0.5 h-4 w-4 text-zinc-500" />
                   <div>
                     <p className="text-sm font-medium">
-                      {selectedShift.headcount} staff required
+                      {selectedShift.requiredHeadcount} staff required
                     </p>
                   </div>
                 </div>
 
-                {/* Required Skills */}
-                {selectedShift.requiredSkills &&
-                  selectedShift.requiredSkills.length > 0 && (
-                    <>
-                      <Separator />
-                      <div className="flex items-start gap-3">
-                        <Wrench className="mt-0.5 h-4 w-4 text-zinc-500" />
-                        <div className="space-y-1.5">
-                          <p className="text-sm font-medium">Required Skills</p>
-                          <div className="flex flex-wrap gap-1">
-                            {selectedShift.requiredSkills.map((skill) => (
-                              <Badge key={skill} variant="secondary">
-                                {skill}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                {/* Description */}
-                {selectedShift.description && (
+                {/* Required Skill */}
+                {selectedShift.requiredSkill && (
                   <>
                     <Separator />
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                      {selectedShift.description}
-                    </p>
+                    <div className="flex items-start gap-3">
+                      <Wrench className="mt-0.5 h-4 w-4 text-zinc-500" />
+                      <div className="space-y-1.5">
+                        <p className="text-sm font-medium">Required Skill</p>
+                        <Badge variant="secondary">
+                          {selectedShift.requiredSkill}
+                        </Badge>
+                      </div>
+                    </div>
                   </>
                 )}
 

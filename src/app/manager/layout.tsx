@@ -26,7 +26,7 @@ export default async function ManagerLayout({
     email: session.user.email ?? "",
     name: session.user.name ?? "",
     role: session.user.role as UserRole,
-    timezone: session.user.timezone ?? "UTC",
+    preferredTimezone: session.user.timezone ?? "UTC",
     skills: session.user.skills ?? [],
     createdAt: "",
     updatedAt: "",
