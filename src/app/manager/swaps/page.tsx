@@ -11,7 +11,6 @@ import {
   Filter,
   Check,
   X,
-  Info,
 } from "lucide-react";
 import { api, getErrorMessage } from "@/lib/api-client";
 import { timezone } from "@/lib/timezone";
@@ -33,12 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Avatar } from "@/components/ui/avatar";
-import type {
-  SwapRequest,
-  SwapRequestStatus,
-  ShiftAssignment,
-  User,
-} from "@/types";
+import type { SwapRequest, SwapRequestStatus, ShiftAssignment } from "@/types";
 
 type Tab = "my-requests" | "incoming" | "create";
 
@@ -52,7 +46,7 @@ const statusVariant = (status: SwapRequestStatus) => {
   switch (status) {
     case "PENDING":
       return "warning" as const;
-    case "APPROVED":
+    case "ACCEPTED":
       return "success" as const;
     case "REJECTED":
       return "destructive" as const;
@@ -97,19 +91,15 @@ export default function SwapsPage() {
     },
   });
 
-  const { data: staffData, isLoading: staffLoading } = useQuery({
-    queryKey: ["users", "staff"],
-    queryFn: async () => {
-      const res = await api.users.getUsers({ role: "STAFF" });
-      const data = res.data;
-      return (Array.isArray(data) ? data : (data as any)?.data ?? []) as User[];
+  const { data: staffList = [], isLoading: staffLoading } = useFetchUsers(
+    {
+      role: "STAFF",
     },
-    enabled: activeTab === "create",
-  });
+    activeTab === "create",
+  );
 
   const swaps = extractData(swapsData);
   const myShifts = extractData(shiftsData);
-  const staffList = (staffData ?? []) as User[];
 
   const myRequests = swaps.filter((s) => s.initiatorId === user?.id);
   const incomingRequests = swaps.filter((s) => s.targetUserId === user?.id);

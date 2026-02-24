@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, PanelLeftClose, Bell } from "lucide-react";
+import { Menu, PanelLeftClose, Bell, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUI } from "@/contexts/ui-context";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,14 @@ export function Header({ notificationCount = 0 }: HeaderProps) {
           >
             <Menu className="h-5 w-5" />
           </Button>
+        </div>
+
+        {/* Center section - Brand logo for mobile */}
+        <div className="flex items-center gap-2 md:hidden">
+          <Clock className="h-5 w-5 text-primary" />
+          <span className="text-lg font-semibold tracking-tight">
+            ShiftSync
+          </span>
         </div>
 
         {/* Right section */}

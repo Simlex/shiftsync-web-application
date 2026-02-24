@@ -24,7 +24,6 @@ const config = {
         },
       },
       async authorize(credentials) {
-        console.log("👉🏻 --->| credentials: ", credentials);
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Email and password are required");
         }
@@ -34,7 +33,6 @@ const config = {
             credentials.email as string,
             credentials.password as string,
           );
-          console.log("👉🏻 --->| response: ", response);
 
           const { user, access_token } = response.data;
 

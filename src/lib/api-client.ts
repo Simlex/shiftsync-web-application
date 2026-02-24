@@ -176,8 +176,12 @@ export const api = {
       id: string,
       data: { userId: string; overrideReason?: string },
     ) => apiClient.post(`/shifts/${id}/assign`, data),
-    unassignShift: (shiftId: string, userId: string) =>
+    unassignUser: (shiftId: string, userId: string) =>
       apiClient.delete(`/shifts/${shiftId}/assignments/${userId}`),
+    publishShift: (shiftId: string) =>
+      apiClient.patch(`/shifts/${shiftId}/publish`, {}),
+    unpublishShift: (shiftId: string) =>
+      apiClient.patch(`/shifts/${shiftId}/unpublish`, {}),
   },
 
   // Swap Requests
@@ -186,9 +190,8 @@ export const api = {
       apiClient.get("/swaps", { params }),
     getSwap: (id: string) => apiClient.get(`/swaps/${id}`),
     createSwap: (data: {
-      initiatorShiftId: string;
-      targetUserId: string;
-      targetShiftId: string;
+      fromAssignmentId: string;
+      toUserId: string;
       reason?: string;
     }) => apiClient.post("/swaps", data),
     approveSwap: (id: string, reason?: string) =>
@@ -201,6 +204,8 @@ export const api = {
   drops: {
     getDrops: (params?: { status?: string; userId?: string }) =>
       apiClient.get("/drops", { params }),
+    getMyDrops: (params?: { status?: string }) =>
+      apiClient.get("/drops/my-drops", { params }),
     getDrop: (id: string) => apiClient.get(`/drops/${id}`),
     createDrop: (data: {
       shiftId: string;
@@ -208,8 +213,11 @@ export const api = {
       expiresAt?: string;
     }) => apiClient.post("/drops", data),
     claimDrop: (id: string) => apiClient.post(`/drops/${id}/claim`, {}),
+    updateDrop: (id: string, data: { reason?: string; expiresAt?: string }) =>
+      apiClient.patch(`/drops/${id}`, data),
     extendDrop: (id: string, newExpiry: string) =>
-      apiClient.put(`/drops/${id}/extend`, { expiresAt: newExpiry }),
+      apiClient.patch(`/drops/${id}`, { expiresAt: newExpiry }),
+    cancelDrop: (id: string) => apiClient.delete(`/drops/${id}`),
   },
 
   // Locations
@@ -234,6 +242,16 @@ export const api = {
       }),
     removeManager: (locationId: string, managerId: string) =>
       apiClient.delete(`/locations/${locationId}/managers/${managerId}`),
+  },
+
+  // Notifications
+  notifications: {
+    getNotifications: (params?: { read?: boolean; limit?: number }) =>
+      apiClient.get("/notifications", { params }),
+    markAsRead: (id: string) => apiClient.patch(`/notifications/${id}/read`),
+    markAllAsRead: () => apiClient.patch("/notifications/mark-all-read"),
+    deleteNotification: (id: string) =>
+      apiClient.delete(`/notifications/${id}`),
   },
 
   // Constraints

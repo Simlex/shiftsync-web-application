@@ -13,7 +13,7 @@ import {
   Users,
   ClipboardList,
   BarChart3,
-  Settings,
+  MapPin,
   LogOut,
   X,
 } from "lucide-react";
@@ -83,6 +83,12 @@ const getDashboardNavItems = (role: UserRole): NavItem[] => {
           roles: ["ADMIN"],
         },
         {
+          label: "Location Management",
+          href: ROUTES.ADMIN_LOCATIONS,
+          icon: MapPin,
+          roles: ["ADMIN"],
+        },
+        {
           label: "Schedule Management",
           href: ROUTES.ADMIN_SCHEDULE,
           icon: Calendar,
@@ -102,6 +108,18 @@ const getDashboardNavItems = (role: UserRole): NavItem[] => {
           label: "Dashboard",
           href: ROUTES.MANAGER,
           icon: LayoutDashboard,
+          roles: ["MANAGER"],
+        },
+        {
+          label: "Staff Management",
+          href: ROUTES.MANAGER_STAFF,
+          icon: Users,
+          roles: ["MANAGER"],
+        },
+        {
+          label: "Location Management",
+          href: ROUTES.MANAGER_LOCATIONS,
+          icon: MapPin,
           roles: ["MANAGER"],
         },
         {

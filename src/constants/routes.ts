@@ -11,6 +11,7 @@ export const ROUTES = {
   // Admin routes
   ADMIN_ANALYTICS: "/admin/analytics",
   ADMIN_STAFF: "/admin/staff",
+  ADMIN_LOCATIONS: "/admin/locations",
   ADMIN_SCHEDULE: "/admin/schedule",
   ADMIN_AVAILABILITY: "/admin/availability",
   ADMIN_SWAPS: "/admin/swaps",
@@ -19,6 +20,8 @@ export const ROUTES = {
 
   // Manager routes
   MANAGER_SCHEDULE: "/manager/schedule",
+  MANAGER_STAFF: "/manager/staff",
+  MANAGER_LOCATIONS: "/manager/locations",
   MANAGER_REQUESTS: "/manager/requests",
   MANAGER_DROPS: "/manager/drops",
   MANAGER_SWAPS: "/manager/swaps",

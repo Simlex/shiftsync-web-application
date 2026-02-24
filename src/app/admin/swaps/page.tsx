@@ -1,8 +1,6 @@
 "use client";
-
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { DateTime } from "luxon";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
   Send,
@@ -11,13 +9,11 @@ import {
   Filter,
   Check,
   X,
-  Info,
 } from "lucide-react";
-import { api, getErrorMessage } from "@/lib/api-client";
 import { timezone } from "@/lib/timezone";
 import { useAuth } from "@/contexts/auth-context";
 import { DATE_FORMATS } from "@/constants";
-import { cn, extractData } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/app/client-hooks";
 import {
   Card,
@@ -33,18 +29,21 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Avatar } from "@/components/ui/avatar";
-import type {
-  SwapRequest,
-  SwapRequestStatus,
-  ShiftAssignment,
-  User,
-} from "@/types";
+import type { SwapRequestStatus, ShiftAssignment } from "@/types";
+import { useFetchUsers } from "@/hooks/users";
+import {
+  useFetchSwaps,
+  useFetchMyShifts,
+  useCreateSwap,
+  useApproveSwap,
+  useRejectSwap,
+} from "@/hooks/swaps";
 
-type Tab = "my-requests" | "incoming" | "create";
+type Tab = "all-requests" | "pending" | "create";
 
 const TABS: { id: Tab; label: string; icon: typeof Send }[] = [
-  { id: "my-requests", label: "My Requests", icon: Send },
-  { id: "incoming", label: "Incoming", icon: Inbox },
+  { id: "all-requests", label: "All Requests", icon: Inbox },
+  { id: "pending", label: "Pending Review", icon: ArrowLeftRight },
   { id: "create", label: "Create Swap", icon: Plus },
 ];
 
@@ -52,10 +51,12 @@ const statusVariant = (status: SwapRequestStatus) => {
   switch (status) {
     case "PENDING":
       return "warning" as const;
-    case "APPROVED":
+    case "ACCEPTED":
       return "success" as const;
     case "REJECTED":
       return "destructive" as const;
+    default:
+      return "secondary" as const;
   }
 };
 
@@ -65,7 +66,7 @@ export default function SwapsPage() {
   const queryClient = useQueryClient();
   const userTimezone = user?.preferredTimezone ?? "UTC";
 
-  const [activeTab, setActiveTab] = useState<Tab>("my-requests");
+  const [activeTab, setActiveTab] = useState<Tab>("all-requests");
   const [statusFilter, setStatusFilter] = useState<SwapRequestStatus | "ALL">(
     "ALL",
   );
@@ -75,113 +76,62 @@ export default function SwapsPage() {
   // Form state for Create Swap
   const [selectedShiftId, setSelectedShiftId] = useState("");
   const [targetUserId, setTargetUserId] = useState("");
-  const [targetShiftId, setTargetShiftId] = useState("");
   const [reason, setReason] = useState("");
 
-  // Queries
-  const { data: swapsData, isLoading: swapsLoading } = useQuery({
-    queryKey: ["swaps", "my"],
-    queryFn: async () => {
-      const res = await api.swaps.getSwaps();
-      return res.data as { data: SwapRequest[] } | SwapRequest[];
-    },
+  // Queries using proper hooks
+  const { data: swaps = [], isLoading: swapsLoading } = useFetchSwaps();
+  const { data: myShifts = [], isLoading: shiftsLoading } = useFetchMyShifts();
+  const { data: staffList = [], isLoading: staffLoading } = useFetchUsers({
+    role: "STAFF",
   });
 
-  const { data: shiftsData, isLoading: shiftsLoading } = useQuery({
-    queryKey: ["shifts", "my-assignments"],
-    queryFn: async () => {
-      const res = await api.shifts.getShifts({
-        startDate: DateTime.now().toUTC().toISO() ?? undefined,
-      });
-      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
-    },
-  });
+  // Admin sees all swap requests
+  const allRequests = swaps;
+  const pendingRequests = swaps.filter((s) => s.status === "PENDING");
 
-  const { data: staffData, isLoading: staffLoading } = useQuery({
-    queryKey: ["users", "staff"],
-    queryFn: async () => {
-      const res = await api.users.getUsers({ role: "STAFF" });
-      const data = res.data;
-      return (Array.isArray(data) ? data : (data as any)?.data ?? []) as User[];
-    },
-    enabled: activeTab === "create",
-  });
-
-  const swaps = extractData(swapsData);
-  const myShifts = extractData(shiftsData);
-  const staffList = (staffData ?? []) as User[];
-
-  const myRequests = swaps.filter((s) => s.initiatorId === user?.id);
-  const incomingRequests = swaps.filter((s) => s.targetUserId === user?.id);
-
-  const filteredMyRequests =
+  const filteredRequests =
     statusFilter === "ALL"
-      ? myRequests
-      : myRequests.filter((s) => s.status === statusFilter);
-
-  // Target user's shifts for create form
-  const { data: targetShiftsData, isLoading: targetShiftsLoading } = useQuery({
-    queryKey: ["shifts", "target", targetUserId],
-    queryFn: async () => {
-      const res = await api.shifts.getShifts({
-        startDate: DateTime.now().toUTC().toISO() ?? undefined,
-      });
-      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
-    },
-    enabled: !!targetUserId,
-  });
-
-  const targetShifts = extractData(targetShiftsData).filter(
-    (s) => s.userId === targetUserId,
-  );
+      ? allRequests
+      : allRequests.filter((s) => s.status === statusFilter);
 
   // Mutations
-  const approveMutation = useMutation({
-    mutationFn: (id: string) => api.swaps.approveSwap(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["swaps"] });
-      toast.success("Swap Approved", "The swap request has been approved.");
-    },
-    onError: (error: unknown) => {
-      toast.error("Failed to Approve", getErrorMessage(error));
-    },
-  });
+  const approveMutation = useApproveSwap();
+  const rejectMutation = useRejectSwap();
+  const createMutation = useCreateSwap();
 
-  const rejectMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      api.swaps.rejectSwap(id, reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["swaps"] });
-      setRejectingId(null);
-      setRejectionReason("");
-      toast.success("Swap Rejected", "The swap request has been rejected.");
-    },
-    onError: (error: unknown) => {
-      toast.error("Failed to Reject", getErrorMessage(error));
-    },
-  });
+  const handleApprove = (id: string) => {
+    approveMutation.mutate(id);
+  };
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      api.swaps.createSwap({
-        initiatorShiftId: selectedShiftId,
-        targetUserId,
-        targetShiftId,
+  const handleReject = (id: string, reason: string) => {
+    rejectMutation.mutate(
+      { id, reason },
+      {
+        onSuccess: () => {
+          setRejectingId(null);
+          setRejectionReason("");
+        },
+      },
+    );
+  };
+
+  const handleCreate = () => {
+    createMutation.mutate(
+      {
+        fromAssignmentId: selectedShiftId,
+        toUserId: targetUserId,
         reason: reason || undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["swaps"] });
-      setSelectedShiftId("");
-      setTargetUserId("");
-      setTargetShiftId("");
-      setReason("");
-      setActiveTab("my-requests");
-      toast.success("Swap Created", "Your swap request has been submitted.");
-    },
-    onError: (error: unknown) => {
-      toast.error("Failed to Create Swap", getErrorMessage(error));
-    },
-  });
+      },
+      {
+        onSuccess: () => {
+          setSelectedShiftId("");
+          setTargetUserId("");
+          setReason("");
+          setActiveTab("all-requests");
+        },
+      },
+    );
+  };
 
   const formatShiftTime = (assignment: ShiftAssignment) => {
     const start = timezone.formatUserTime(
@@ -216,9 +166,9 @@ export default function SwapsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Swap Requests</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Swap Management</h1>
         <p className="text-zinc-500 dark:text-zinc-400">
-          Manage shift swap requests with your team
+          Review and manage shift swap requests across all locations
         </p>
       </div>
 
@@ -239,40 +189,37 @@ export default function SwapsPage() {
             >
               <Icon className="h-4 w-4" />
               {tab.label}
-              {tab.id === "incoming" &&
-                incomingRequests.filter((r) => r.status === "PENDING").length >
-                  0 && (
-                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs text-white">
-                    {
-                      incomingRequests.filter((r) => r.status === "PENDING")
-                        .length
-                    }
-                  </span>
-                )}
+              {tab.id === "pending" && pendingRequests.length > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs text-white">
+                  {pendingRequests.length}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
 
       {/* Tab Content */}
-      {activeTab === "my-requests" && (
+      {(activeTab === "all-requests" || activeTab === "pending") && (
         <div className="space-y-4">
-          {/* Status Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-zinc-500" />
-            <select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as SwapRequestStatus | "ALL")
-              }
-              className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-            >
-              <option value="ALL">All Statuses</option>
-              <option value="PENDING">Pending</option>
-              <option value="APPROVED">Approved</option>
-              <option value="REJECTED">Rejected</option>
-            </select>
-          </div>
+          {/* Status Filter - only show for all-requests tab */}
+          {activeTab === "all-requests" && (
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-zinc-500" />
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as SwapRequestStatus | "ALL")
+                }
+                className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+              >
+                <option value="ALL">All Statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="ACCEPTED">Accepted</option>
+                <option value="REJECTED">Rejected</option>
+              </select>
+            </div>
+          )}
 
           <Card>
             <CardContent className="p-0">
@@ -289,52 +236,128 @@ export default function SwapsPage() {
                     </div>
                   ))}
                 </div>
-              ) : filteredMyRequests.length === 0 ? (
+              ) : (activeTab === "pending" ? pendingRequests : filteredRequests)
+                  .length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <ArrowLeftRight className="mb-3 h-10 w-10 text-zinc-300 dark:text-zinc-600" />
-                  <p className="text-sm font-medium">No swap requests</p>
+                  <p className="text-sm font-medium">
+                    {activeTab === "pending"
+                      ? "No pending requests"
+                      : "No swap requests"}
+                  </p>
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    {statusFilter === "ALL"
-                      ? "You haven't created any swap requests yet."
-                      : `No ${statusFilter.toLowerCase()} swap requests.`}
+                    {activeTab === "pending"
+                      ? "All swap requests have been processed."
+                      : statusFilter === "ALL"
+                        ? "No swap requests have been created yet."
+                        : `No ${statusFilter.toLowerCase()} swap requests.`}
                   </p>
                 </div>
               ) : (
                 <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                  {filteredMyRequests.map((swap) => (
-                    <div key={swap.id} className="flex items-center gap-4 p-4">
-                      <Avatar
-                        size="sm"
-                        fallback={swap.targetUser?.name?.charAt(0) ?? "?"}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">
-                          Swap with {swap.targetUser?.name ?? "Unknown User"}
-                        </p>
-                        <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                          {swap.initiatorShift && (
-                            <span>
-                              Your shift: {formatShiftTime(swap.initiatorShift)}
-                            </span>
-                          )}
-                          {swap.targetShift && (
-                            <span className="block">
-                              Their shift: {formatShiftTime(swap.targetShift)}
-                            </span>
+                  {(activeTab === "pending"
+                    ? pendingRequests
+                    : filteredRequests
+                  ).map((swap) => (
+                    <div key={swap.id} className="p-4">
+                      <div className="flex items-start gap-4">
+                        <Avatar
+                          size="sm"
+                          fallback={swap.requestedBy?.name?.charAt(0) ?? "?"}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">
+                            {swap.requestedBy?.name ?? "Unknown User"} →{" "}
+                            {swap.toUser?.name ?? "Unknown User"}
+                          </p>
+                          <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                            {swap.fromAssignment && (
+                              <span>
+                                Initiator shift:{" "}
+                                {formatShiftTime(swap.fromAssignment)}
+                              </span>
+                            )}
+                            {swap.toUser && (
+                              <span className="block">
+                                Target user: {swap.toUser.name}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                            Requested{" "}
+                            {timezone.formatUserTime(
+                              swap.createdAt,
+                              userTimezone,
+                              DATE_FORMATS.DISPLAY_DATE,
+                            )}
+                          </p>
+                        </div>
+                        <Badge variant={statusVariant(swap.status)}>
+                          {swap.status}
+                        </Badge>
+                      </div>
+
+                      {swap.status === "PENDING" && (
+                        <div className="mt-3 flex items-center gap-2 pl-12">
+                          {rejectingId === swap.id ? (
+                            <div className="flex flex-1 items-center gap-2">
+                              <Input
+                                placeholder="Rejection reason..."
+                                value={rejectionReason}
+                                onChange={(e) =>
+                                  setRejectionReason(e.target.value)
+                                }
+                                className="h-9 text-sm"
+                              />
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                disabled={
+                                  !rejectionReason.trim() ||
+                                  rejectMutation.isPending
+                                }
+                                onClick={() =>
+                                  handleReject(swap.id, rejectionReason)
+                                }
+                              >
+                                Confirm
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setRejectingId(null);
+                                  setRejectionReason("");
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleApprove(swap.id)}
+                                disabled={approveMutation.isPending}
+                              >
+                                <Check className="mr-1 h-3.5 w-3.5" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setRejectingId(swap.id)}
+                              >
+                                <X className="mr-1 h-3.5 w-3.5" />
+                                Reject
+                              </Button>
+                            </>
                           )}
                         </div>
-                        <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                          Requested{" "}
-                          {timezone.formatUserTime(
-                            swap.createdAt,
-                            userTimezone,
-                            DATE_FORMATS.DISPLAY_DATE,
-                          )}
-                        </p>
-                      </div>
-                      <Badge variant={statusVariant(swap.status)}>
-                        {swap.status}
-                      </Badge>
+                      )}
+
+                      
                     </div>
                   ))}
                 </div>
@@ -344,177 +367,33 @@ export default function SwapsPage() {
         </div>
       )}
 
-      {activeTab === "incoming" && (
-        <Card>
-          <CardContent className="p-0">
-            {swapsLoading ? (
-              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-4 p-4">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1 space-y-2">
-                      <Skeleton className="h-4 w-40" />
-                      <Skeleton className="h-3 w-64" />
-                    </div>
-                    <Skeleton className="h-9 w-20" />
-                  </div>
-                ))}
-              </div>
-            ) : incomingRequests.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Inbox className="mb-3 h-10 w-10 text-zinc-300 dark:text-zinc-600" />
-                <p className="text-sm font-medium">No incoming requests</p>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No one has requested a shift swap with you.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                {incomingRequests.map((swap) => (
-                  <div key={swap.id} className="p-4">
-                    <div className="flex items-start gap-4">
-                      <Avatar
-                        size="sm"
-                        fallback={swap.initiator?.name?.charAt(0) ?? "?"}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium">
-                          {swap.initiator?.name ?? "Unknown User"}
-                        </p>
-                        <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                          {swap.initiatorShift && (
-                            <span>
-                              Their shift:{" "}
-                              {formatShiftTime(swap.initiatorShift)}
-                            </span>
-                          )}
-                          {swap.targetShift && (
-                            <span className="block">
-                              Your shift: {formatShiftTime(swap.targetShift)}
-                            </span>
-                          )}
-                        </div>
-                        {swap.reason && (
-                          <p className="mt-1 text-xs italic text-zinc-400 dark:text-zinc-500">
-                            &ldquo;{swap.reason}&rdquo;
-                          </p>
-                        )}
-                        <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                          Requested{" "}
-                          {timezone.formatUserTime(
-                            swap.createdAt,
-                            userTimezone,
-                            DATE_FORMATS.DISPLAY_DATE,
-                          )}
-                        </p>
-                      </div>
-                      <Badge variant={statusVariant(swap.status)}>
-                        {swap.status}
-                      </Badge>
-                    </div>
-
-                    {swap.status === "PENDING" && (
-                      <div className="mt-3 flex items-center gap-2 pl-12">
-                        {rejectingId === swap.id ? (
-                          <div className="flex flex-1 items-center gap-2">
-                            <Input
-                              placeholder="Rejection reason..."
-                              value={rejectionReason}
-                              onChange={(e) =>
-                                setRejectionReason(e.target.value)
-                              }
-                              className="h-9 text-sm"
-                            />
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              disabled={
-                                !rejectionReason.trim() ||
-                                rejectMutation.isPending
-                              }
-                              onClick={() =>
-                                rejectMutation.mutate({
-                                  id: swap.id,
-                                  reason: rejectionReason,
-                                })
-                              }
-                            >
-                              Confirm
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setRejectingId(null);
-                                setRejectionReason("");
-                              }}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
-                        ) : (
-                          <>
-                            <Button
-                              size="sm"
-                              onClick={() => approveMutation.mutate(swap.id)}
-                              disabled={approveMutation.isPending}
-                            >
-                              <Check className="mr-1 h-3.5 w-3.5" />
-                              Accept
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setRejectingId(swap.id)}
-                            >
-                              <X className="mr-1 h-3.5 w-3.5" />
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {swap.status === "REJECTED" && swap.rejectionReason && (
-                      <p className="mt-2 pl-12 text-xs text-red-500">
-                        Reason: {swap.rejectionReason}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {activeTab === "create" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Create Swap Request</CardTitle>
             <CardDescription>
-              Select your shift and the shift you&apos;d like to swap with
+              Create a swap request between two staff members
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
               {/* Your Shift */}
               <div className="space-y-2">
-                <Label htmlFor="my-shift">Your Shift</Label>
+                <Label htmlFor="initiator-shift">Initiator Shift</Label>
                 {shiftsLoading ? (
                   <Skeleton className="h-10 w-full" />
                 ) : myShifts.length === 0 ? (
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    No upcoming shifts available to swap.
+                    No upcoming shifts available.
                   </p>
                 ) : (
                   <select
-                    id="my-shift"
+                    id="initiator-shift"
                     value={selectedShiftId}
                     onChange={(e) => setSelectedShiftId(e.target.value)}
                     className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
                   >
-                    <option value="">Select a shift...</option>
+                    <option value="">Select an initiator shift...</option>
                     {myShifts
                       .filter((s) => s.status === "SCHEDULED")
                       .map((assignment) => (
@@ -541,50 +420,15 @@ export default function SwapsPage() {
                     value={targetUserId}
                     onChange={(e) => {
                       setTargetUserId(e.target.value);
-                      setTargetShiftId("");
                     }}
                     className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
                   >
                     <option value="">Select a staff member...</option>
-                    {staffList
-                      .filter((s) => s.id !== user?.id)
-                      .map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.name} ({staff.email})
-                        </option>
-                      ))}
-                  </select>
-                )}
-              </div>
-
-              {/* Target Shift */}
-              <div className="space-y-2">
-                <Label htmlFor="target-shift">Target Shift</Label>
-                {!targetUserId ? (
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    Select a target staff member first.
-                  </p>
-                ) : targetShiftsLoading ? (
-                  <Skeleton className="h-10 w-full" />
-                ) : targetShifts.length === 0 ? (
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    No upcoming shifts found for this user.
-                  </p>
-                ) : (
-                  <select
-                    id="target-shift"
-                    value={targetShiftId}
-                    onChange={(e) => setTargetShiftId(e.target.value)}
-                    className="flex h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                  >
-                    <option value="">Select a shift...</option>
-                    {targetShifts
-                      .filter((s) => s.status === "SCHEDULED")
-                      .map((assignment) => (
-                        <option key={assignment.id} value={assignment.id}>
-                          {formatShiftLabel(assignment)}
-                        </option>
-                      ))}
+                    {staffList.map((staff) => (
+                      <option key={staff.id} value={staff.id}>
+                        {staff.name} ({staff.email})
+                      </option>
+                    ))}
                   </select>
                 )}
               </div>
@@ -594,7 +438,7 @@ export default function SwapsPage() {
                 <Label htmlFor="reason">Reason (optional)</Label>
                 <Input
                   id="reason"
-                  placeholder="Why do you want to swap?"
+                  placeholder="Reason for the swap request..."
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                 />
@@ -603,17 +447,14 @@ export default function SwapsPage() {
               <Separator />
 
               <Button
-                onClick={() => createMutation.mutate()}
+                onClick={handleCreate}
                 disabled={
-                  !selectedShiftId ||
-                  !targetUserId ||
-                  !targetShiftId ||
-                  createMutation.isPending
+                  !selectedShiftId || !targetUserId || createMutation.isPending
                 }
               >
                 {createMutation.isPending
-                  ? "Submitting..."
-                  : "Submit Swap Request"}
+                  ? "Creating..."
+                  : "Create Swap Request"}
               </Button>
             </div>
           </CardContent>

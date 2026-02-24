@@ -1,5 +1,4 @@
 "use client";
-
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,6 +15,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { extractData } from "@/lib/utils";
 import { timezone } from "@/lib/timezone";
 import { DATE_FORMATS } from "@/constants";
+import { useDrops, useExtendDropRequest } from "@/hooks/drops";
 import {
   Card,
   CardHeader,
@@ -27,11 +27,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import type {
   SwapRequest,
   SwapRequestStatus,
-  DropRequest,
   DropRequestStatus,
 } from "@/types";
 
@@ -44,11 +42,16 @@ type DropFilter = "ALL" | DropRequestStatus;
 
 const SWAP_STATUS_BADGE: Record<
   SwapRequestStatus,
-  { variant: "warning" | "success" | "destructive"; label: string }
+  {
+    variant: "warning" | "success" | "destructive" | "secondary" | "outline";
+    label: string;
+  }
 > = {
   PENDING: { variant: "warning", label: "Pending" },
-  APPROVED: { variant: "success", label: "Approved" },
+  ACCEPTED: { variant: "success", label: "Accepted" },
   REJECTED: { variant: "destructive", label: "Rejected" },
+  CANCELLED: { variant: "outline", label: "Cancelled" },
+  EXPIRED: { variant: "secondary", label: "Expired" },
 };
 
 const DROP_STATUS_BADGE: Record<
@@ -175,19 +178,12 @@ export default function RequestManagementPage() {
     retry: false,
   });
 
-  // ---- Drop requests query ----
+  // ---- Drop requests query using hooks ----
   const {
-    data: dropsRaw,
+    data: drops = [],
     isLoading: dropsLoading,
     isError: dropsError,
-  } = useQuery({
-    queryKey: ["drops", "manager"],
-    queryFn: async () => {
-      const res = await api.drops.getDrops();
-      return res.data as { data: DropRequest[] } | DropRequest[];
-    },
-    retry: false,
-  });
+  } = useDrops();
 
   // ---- Mutations ----
   const approveSwap = useMutation({
@@ -206,20 +202,10 @@ export default function RequestManagementPage() {
     },
   });
 
-  const extendDrop = useMutation({
-    mutationFn: (id: string) => {
-      const newExpiry = new Date();
-      newExpiry.setDate(newExpiry.getDate() + 1);
-      return api.drops.extendDrop(id, newExpiry.toISOString());
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["drops"] });
-    },
-  });
+  const extendDropMutation = useExtendDropRequest();
 
   // ---- Derived data ----
   const swaps = extractData<SwapRequest>(swapsRaw);
-  const drops = extractData<DropRequest>(dropsRaw);
 
   const filteredSwaps =
     swapFilter === "ALL" ? swaps : swaps.filter((s) => s.status === swapFilter);
@@ -253,7 +239,7 @@ export default function RequestManagementPage() {
               </div>
             </div>
             <div className="flex gap-1">
-              {(["ALL", "PENDING", "APPROVED", "REJECTED"] as const).map(
+              {(["ALL", "PENDING", "ACCEPTED", "REJECTED"] as const).map(
                 (filter) => (
                   <Button
                     key={filter}
@@ -305,22 +291,19 @@ export default function RequestManagementPage() {
                     return (
                       <tr key={swap.id}>
                         <td className="py-3 pr-4 font-medium">
-                          {swap.initiator?.name ?? swap.initiatorId}
+                          {swap.requestedBy?.name ?? swap.requestedById}
                         </td>
                         <td className="py-3 pr-4 text-zinc-500 dark:text-zinc-400">
                           {formatShiftTime(
-                            swap.initiatorShift?.shift?.startTime,
+                            swap.fromAssignment?.shift?.startTime,
                             userTz,
                           )}
                         </td>
                         <td className="py-3 pr-4 font-medium">
-                          {swap.targetUser?.name ?? swap.targetUserId}
+                          {swap.toUser?.name ?? swap.toUserId}
                         </td>
                         <td className="py-3 pr-4 text-zinc-500 dark:text-zinc-400">
-                          {formatShiftTime(
-                            swap.targetShift?.shift?.startTime,
-                            userTz,
-                          )}
+                          {formatShiftTime(swap.shift?.startTime, userTz)}
                         </td>
                         <td className="py-3 pr-4">
                           <Badge variant={statusBadge.variant}>
@@ -473,7 +456,7 @@ export default function RequestManagementPage() {
                           </span>
                         </td>
                         <td className="py-3 pr-4 text-zinc-500 dark:text-zinc-400">
-                          {drop.claimedBy ?? "—"}
+                          {drop.claimedBy?.name ?? "—"}
                         </td>
                         <td className="py-3 pr-4 text-zinc-500 dark:text-zinc-400">
                           {timezone.formatUserTime(
@@ -488,8 +471,8 @@ export default function RequestManagementPage() {
                               variant="outline"
                               size="sm"
                               className="h-8"
-                              disabled={extendDrop.isPending}
-                              onClick={() => extendDrop.mutate(drop.id)}
+                              disabled={extendDropMutation.isPending}
+                              onClick={() => extendDropMutation.mutate(drop.id)}
                             >
                               <Clock className="h-3 w-3" />
                               Extend

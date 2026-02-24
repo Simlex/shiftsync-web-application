@@ -28,6 +28,9 @@ export const queryKeys = {
   // Drops
   Drops: (params?: { status?: string; userId?: string }) =>
     ["drops", params] as const,
+  Drop: (id: string) => ["drops", id] as const,
+  MyDrops: (status?: string) => ["drops", "my", status] as const,
+  OpenDrops: () => ["drops", "open"] as const,
 
   // Availability
   Availability: (userId?: string) => ["availability", userId] as const,

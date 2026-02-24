@@ -8,6 +8,8 @@
 
 export type UserRole = "ADMIN" | "MANAGER" | "STAFF";
 
+export type RoleFilter = "ALL" | UserRole;
+
 export interface User {
   id: string;
   email: string;
@@ -47,20 +49,38 @@ export interface Location {
   address?: string;
   createdAt: string;
   updatedAt: string;
+  managers: {
+    id: string;
+  }[];
+  _count: {
+    certifications: number;
+    shifts: number;
+  };
 }
 
 // ============================================================================
 // Shifts
 // ============================================================================
 
+export type ShiftStatus =
+  | "DRAFT"
+  | "SCHEDULED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "PAST"
+  | "UNDERSTAFFED";
+
 export interface Shift {
   id: string;
   locationId: string;
   location?: Location;
+  isPublished: boolean;
+  publishedAt?: string; // ISO 8601 UTC
   startTime: string; // ISO 8601 UTC
   endTime: string; // ISO 8601 UTC
   requiredSkill: string;
   requiredHeadcount: number;
+  status?: ShiftStatus; // Calculated by backend
   assignments?: ShiftAssignment[];
   createdAt: string;
   updatedAt: string;
@@ -83,21 +103,25 @@ export interface ShiftAssignment {
 // Swap Requests
 // ============================================================================
 
-export type SwapRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type SwapRequestStatus =
+  | "PENDING"
+  | "ACCEPTED"
+  | "REJECTED"
+  | "CANCELLED"
+  | "EXPIRED";
 
 export interface SwapRequest {
   id: string;
-  initiatorId: string;
-  initiator?: User;
-  initiatorShiftId: string;
-  initiatorShift?: ShiftAssignment;
-  targetUserId: string;
-  targetUser?: User;
-  targetShiftId: string;
-  targetShift?: ShiftAssignment;
+  fromAssignmentId: string;
+  fromAssignment?: ShiftAssignment;
+  toUserId: string;
+  toUser?: User;
+  requestedById: string;
+  requestedBy?: User;
   status: SwapRequestStatus;
-  reason?: string;
-  rejectionReason?: string;
+  managerApproved: boolean;
+  shiftId?: string;
+  shift?: Shift;
   createdAt: string;
   updatedAt: string;
 }
@@ -116,7 +140,7 @@ export interface DropRequest {
   shift?: ShiftAssignment;
   status: DropRequestStatus;
   expiresAt: string; // ISO 8601 UTC
-  claimedBy?: string; // userId
+  claimedBy?: Pick<User, "email" | "id" | "name">; // userId
   claimedAt?: string; // ISO 8601 UTC
   reason?: string;
   createdAt: string;

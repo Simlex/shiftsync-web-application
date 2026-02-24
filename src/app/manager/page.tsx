@@ -24,7 +24,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { StatsCard, StatsCardSkeleton } from "@/components/dashboard/stats-card";
+import {
+  StatsCard,
+  StatsCardSkeleton,
+} from "@/components/dashboard/stats-card";
 import { useFetchUsers } from "@/hooks/users";
 import { useFetchShifts } from "@/hooks/shifts";
 import type { Location } from "@/types";
@@ -63,26 +66,36 @@ export default function ManagerDashboardPage() {
 
   const todayStart = DateTime.now().startOf("day").toUTC().toISO() ?? "";
   const todayEnd = DateTime.now().endOf("day").toUTC().toISO() ?? "";
-  const { data: todayShifts = [], isLoading: todayShiftsLoading } = useFetchShifts(
-    { startDate: todayStart, endDate: todayEnd },
-    !!todayStart && !!todayEnd,
-  );
+  const { data: todayShifts = [], isLoading: todayShiftsLoading } =
+    useFetchShifts(
+      { startDate: todayStart, endDate: todayEnd },
+      !!todayStart && !!todayEnd,
+    );
 
-  const locations = extractData(locationsData as any);
-  const staffUsers = allUsers.filter((u: any) => u.role === "STAFF" || u.role === "MANAGER");
+  const locations = extractData(locationsData);
+  const staffUsers = allUsers.filter(
+    (u: any) => u.role === "STAFF" || u.role === "MANAGER",
+  );
 
   const pendingSwaps = extractData(swapsData);
   const openDrops = extractData(dropsData);
   const pendingCount = pendingSwaps.length + openDrops.length;
 
-  const isLoading = locationsLoading || swapsLoading || dropsLoading || usersLoading || todayShiftsLoading;
+  const isLoading =
+    locationsLoading ||
+    swapsLoading ||
+    dropsLoading ||
+    usersLoading ||
+    todayShiftsLoading;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Manager Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Manager Dashboard
+          </h1>
           <p className="text-zinc-500 dark:text-zinc-400">
             Overview of your managed locations
           </p>
@@ -219,7 +232,8 @@ export default function ManagerDashboardPage() {
                     <Badge variant="warning">Swaps</Badge>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">
-                        {pendingSwaps.length} pending swap request{pendingSwaps.length > 1 ? "s" : ""}
+                        {pendingSwaps.length} pending swap request
+                        {pendingSwaps.length > 1 ? "s" : ""}
                       </p>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">
                         Review and approve or reject
@@ -228,13 +242,16 @@ export default function ManagerDashboardPage() {
                     <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" />
                   </div>
                 )}
-                {pendingSwaps.length > 0 && openDrops.length > 0 && <Separator />}
+                {pendingSwaps.length > 0 && openDrops.length > 0 && (
+                  <Separator />
+                )}
                 {openDrops.length > 0 && (
                   <div className="flex items-start gap-3 rounded-lg p-2">
                     <Badge variant="default">Drops</Badge>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">
-                        {openDrops.length} open drop request{openDrops.length > 1 ? "s" : ""}
+                        {openDrops.length} open drop request
+                        {openDrops.length > 1 ? "s" : ""}
                       </p>
                       <p className="text-xs text-zinc-500 dark:text-zinc-400">
                         Shifts available for claiming
@@ -252,7 +269,9 @@ export default function ManagerDashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-lg">Recent Activity</CardTitle>
-            <CardDescription>Latest actions across your locations</CardDescription>
+            <CardDescription>
+              Latest actions across your locations
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-center justify-center py-8 text-center">

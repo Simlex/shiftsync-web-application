@@ -1,12 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { AppQueryConfig } from "@/constants/api";
 import { queryKeys } from "@/constants/queryKeys";
-import { getUsers, getUser } from "@/app/services/users";
+import { getUsers, getUser } from "@/services/users";
 
-export function useFetchUsers(params?: {
-  role?: string;
-  locationId?: string;
-}) {
+export function useFetchUsers(params?: { role?: string; locationId?: string }) {
   return useQuery({
     queryKey: queryKeys.Users(params),
     queryFn: () => getUsers(params),

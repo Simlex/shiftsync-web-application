@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
 import {
   ArrowDownToLine,
@@ -10,17 +10,20 @@ import {
   Plus,
   Clock,
   Check,
-  X,
-  Inbox,
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import { api, getErrorMessage } from "@/lib/api-client";
+import { api } from "@/lib/api-client";
 import { timezone } from "@/lib/timezone";
 import { useAuth } from "@/contexts/auth-context";
 import { DATE_FORMATS } from "@/constants";
 import { cn, extractData } from "@/lib/utils";
-import { useToast } from "@/app/client-hooks";
+import {
+  useMyDrops,
+  useOpenDrops,
+  useCreateDropRequest,
+  useClaimDropRequest,
+} from "@/hooks/drops";
 import {
   Card,
   CardHeader,
@@ -34,7 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import type { DropRequest, DropRequestStatus, ShiftAssignment } from "@/types";
+import type { DropRequestStatus, Shift } from "@/types";
 
 type Tab = "my-drops" | "open-board" | "create";
 
@@ -61,8 +64,6 @@ const statusVariant = (
 
 export default function DropsPage() {
   const { user } = useAuth();
-  const toast = useToast();
-  const queryClient = useQueryClient();
   const userTimezone = user?.preferredTimezone ?? "UTC";
 
   const [activeTab, setActiveTab] = useState<Tab>("my-drops");
@@ -74,90 +75,70 @@ export default function DropsPage() {
   const [expiryTime, setExpiryTime] = useState("23:59");
   const [reason, setReason] = useState("");
 
-  // Queries
-  const { data: dropsData, isLoading: dropsLoading } = useQuery({
-    queryKey: ["drops", "all"],
-    queryFn: async () => {
-      const res = await api.drops.getDrops();
-      return res.data as { data: DropRequest[] } | DropRequest[];
-    },
-    retry: false,
-  });
+  // Queries using hooks
+  const { data: myDrops = [], isLoading: myDropsLoading } = useMyDrops();
+  const { data: openDrops = [], isLoading: openDropsLoading } = useOpenDrops();
 
   const { data: shiftsData, isLoading: shiftsLoading } = useQuery({
-    queryKey: ["shifts", "my-assignments-drops"],
+    queryKey: ["shifts", "my-shifts-for-drops"],
     queryFn: async () => {
-      const res = await api.shifts.getShifts({
+      const res = await api.shifts.getMyShifts({
         startDate: DateTime.now().toUTC().toISO() ?? undefined,
       });
-      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
+      return res.data as { data: Shift[] } | Shift[];
     },
     enabled: activeTab === "create",
     retry: false,
   });
 
-  const drops = extractData(dropsData);
   const myShifts = extractData(shiftsData);
 
-  const myDrops = drops.filter((d) => d.userId === user?.id);
-  const openDrops = drops.filter(
-    (d) => d.status === "OPEN" && d.userId !== user?.id,
-  );
+  // Mutations using hooks
+  const claimMutation = useClaimDropRequest();
+  const createMutation = useCreateDropRequest();
 
-  // Mutations
-  const claimMutation = useMutation({
-    mutationFn: (id: string) => api.drops.claimDrop(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["drops"] });
-      setConfirmClaimId(null);
-      toast.success(
-        "Shift Claimed",
-        "You have successfully claimed this shift.",
-      );
-    },
-    onError: (error: unknown) => {
-      toast.error("Failed to Claim", getErrorMessage(error));
-    },
-  });
+  const handleClaim = (id: string) => {
+    claimMutation.mutate(id, {
+      onSuccess: () => setConfirmClaimId(null),
+    });
+  };
 
-  const createMutation = useMutation({
-    mutationFn: () => {
-      const expiresAt = expiryDate
-        ? (timezone.toUTC(expiryTime, expiryDate, userTimezone).toISO() ??
-          undefined)
-        : undefined;
-      return api.drops.createDrop({
+  const handleCreate = () => {
+    const expiresAt = expiryDate
+      ? (timezone.toUTC(expiryTime, expiryDate, userTimezone).toISO() ??
+        undefined)
+      : undefined;
+
+    createMutation.mutate(
+      {
         shiftId: selectedShiftId,
         reason: reason || undefined,
         expiresAt,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["drops"] });
-      setSelectedShiftId("");
-      setExpiryDate("");
-      setExpiryTime("23:59");
-      setReason("");
-      setActiveTab("my-drops");
-      toast.success("Drop Created", "Your drop request has been submitted.");
-    },
-    onError: (error: unknown) => {
-      toast.error("Failed to Create Drop", getErrorMessage(error));
-    },
-  });
+      },
+      {
+        onSuccess: () => {
+          setSelectedShiftId("");
+          setExpiryDate("");
+          setExpiryTime("23:59");
+          setReason("");
+          setActiveTab("my-drops");
+        },
+      },
+    );
+  };
 
-  const formatShiftLabel = (assignment: ShiftAssignment) => {
+  const formatShiftLabel = (shift: Shift) => {
     const date = timezone.formatUserTime(
-      assignment.shift.startTime,
+      shift.startTime,
       userTimezone,
       DATE_FORMATS.DISPLAY_DATE,
     );
     const time = timezone.formatUserTime(
-      assignment.shift.startTime,
+      shift.startTime,
       userTimezone,
       DATE_FORMATS.TIME_ONLY,
     );
-    const location = assignment.shift.location?.name ?? "Unknown";
+    const location = shift.location?.name ?? "Unknown";
     return `${date} ${time} — ${location}`;
   };
 
@@ -233,7 +214,7 @@ export default function DropsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {dropsLoading ? (
+            {myDropsLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-4">
@@ -320,7 +301,7 @@ export default function DropsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {dropsLoading ? (
+            {openDropsLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-4">
@@ -390,7 +371,7 @@ export default function DropsPage() {
                           <div className="flex items-center gap-2">
                             <Button
                               size="sm"
-                              onClick={() => claimMutation.mutate(drop.id)}
+                              onClick={() => handleClaim(drop.id)}
                               disabled={claimMutation.isPending}
                             >
                               {claimMutation.isPending ? (
@@ -464,10 +445,10 @@ export default function DropsPage() {
                   >
                     <option value="">Select a shift...</option>
                     {myShifts
-                      .filter((s) => s.status === "SCHEDULED")
-                      .map((assignment) => (
-                        <option key={assignment.id} value={assignment.shiftId}>
-                          {formatShiftLabel(assignment)}
+                      //   .filter((shift) => shift?.status === "SCHEDULED")
+                      .map((shift) => (
+                        <option key={shift.id} value={shift.id}>
+                          {formatShiftLabel(shift)}
                         </option>
                       ))}
                   </select>
@@ -510,7 +491,7 @@ export default function DropsPage() {
               <Separator />
 
               <Button
-                onClick={() => createMutation.mutate()}
+                onClick={() => handleCreate()}
                 disabled={!selectedShiftId || createMutation.isPending}
               >
                 {createMutation.isPending ? (

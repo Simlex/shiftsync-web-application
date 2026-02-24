@@ -5,7 +5,7 @@ import {
   getLocations,
   getLocation,
   getLocationStaff,
-} from "@/app/services/locations";
+} from "@/services/locations";
 
 export function useFetchLocations() {
   return useQuery({

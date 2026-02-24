@@ -11,7 +11,6 @@ import {
   Filter,
   Check,
   X,
-  Info,
 } from "lucide-react";
 import { api, getErrorMessage } from "@/lib/api-client";
 import { timezone } from "@/lib/timezone";
@@ -37,8 +36,9 @@ import type {
   SwapRequest,
   SwapRequestStatus,
   ShiftAssignment,
-  User,
+  Shift,
 } from "@/types";
+import { useFetchUsers } from "@/hooks/users";
 
 type Tab = "my-requests" | "incoming" | "create";
 
@@ -52,7 +52,7 @@ const statusVariant = (status: SwapRequestStatus) => {
   switch (status) {
     case "PENDING":
       return "warning" as const;
-    case "APPROVED":
+    case "ACCEPTED":
       return "success" as const;
     case "REJECTED":
       return "destructive" as const;
@@ -93,26 +93,20 @@ export default function SwapsPage() {
       const res = await api.shifts.getShifts({
         startDate: DateTime.now().toUTC().toISO() ?? undefined,
       });
-      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
+      return res.data as { data: Shift[] } | Shift[];
     },
   });
 
-  const { data: staffData, isLoading: staffLoading } = useQuery({
-    queryKey: ["users", "staff"],
-    queryFn: async () => {
-      const res = await api.users.getUsers({ role: "STAFF" });
-      const data = res.data;
-      return (Array.isArray(data) ? data : (data as any)?.data ?? []) as User[];
-    },
-    enabled: activeTab === "create",
+  const { data: staffList = [], isLoading: staffLoading } = useFetchUsers({
+    role: "STAFF",
   });
 
   const swaps = extractData(swapsData);
   const myShifts = extractData(shiftsData);
-  const staffList = (staffData ?? []) as User[];
 
-  const myRequests = swaps.filter((s) => s.initiatorId === user?.id);
-  const incomingRequests = swaps.filter((s) => s.targetUserId === user?.id);
+  const myRequests = swaps.filter((s) => s.requestedById === user?.id);
+  const incomingRequests = swaps.filter((s) => s.toUserId === user?.id);
+  console.log("👉🏻 --->| incomingRequests: ", incomingRequests);
 
   const filteredMyRequests =
     statusFilter === "ALL"
@@ -125,15 +119,14 @@ export default function SwapsPage() {
     queryFn: async () => {
       const res = await api.shifts.getShifts({
         startDate: DateTime.now().toUTC().toISO() ?? undefined,
+        userId: targetUserId,
       });
-      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
+      return res.data as { data: Shift[] } | Shift[];
     },
     enabled: !!targetUserId,
   });
 
-  const targetShifts = extractData(targetShiftsData).filter(
-    (s) => s.userId === targetUserId,
-  );
+  const targetShifts = extractData(targetShiftsData);
 
   // Mutations
   const approveMutation = useMutation({
@@ -164,9 +157,8 @@ export default function SwapsPage() {
   const createMutation = useMutation({
     mutationFn: () =>
       api.swaps.createSwap({
-        initiatorShiftId: selectedShiftId,
-        targetUserId,
-        targetShiftId,
+        fromAssignmentId: selectedShiftId,
+        toUserId: targetUserId,
         reason: reason || undefined,
       }),
     onSuccess: () => {
@@ -184,6 +176,7 @@ export default function SwapsPage() {
   });
 
   const formatShiftTime = (assignment: ShiftAssignment) => {
+    console.log("👉🏻 --->| assignment: ", assignment);
     const start = timezone.formatUserTime(
       assignment.shift.startTime,
       userTimezone,
@@ -197,18 +190,19 @@ export default function SwapsPage() {
     return `${start} – ${end}`;
   };
 
-  const formatShiftLabel = (assignment: ShiftAssignment) => {
+  const formatShiftLabel = (assignment: Shift) => {
+    console.log("👉🏻 --->| assignment: ", assignment);
     const date = timezone.formatUserTime(
-      assignment.shift.startTime,
+      assignment.startTime,
       userTimezone,
       DATE_FORMATS.DISPLAY_DATE,
     );
     const time = timezone.formatUserTime(
-      assignment.shift.startTime,
+      assignment.startTime,
       userTimezone,
       DATE_FORMATS.TIME_ONLY,
     );
-    const location = assignment.shift.location?.name ?? "Unknown Location";
+    const location = assignment.location?.name ?? "Unknown Location";
     return `${date} ${time} — ${location}`;
   };
 
@@ -305,21 +299,16 @@ export default function SwapsPage() {
                     <div key={swap.id} className="flex items-center gap-4 p-4">
                       <Avatar
                         size="sm"
-                        fallback={swap.targetUser?.name?.charAt(0) ?? "?"}
+                        fallback={swap.toUser?.name?.charAt(0) ?? "?"}
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">
-                          Swap with {swap.targetUser?.name ?? "Unknown User"}
+                          Swap with {swap.toUser?.name ?? "Unknown User"}
                         </p>
                         <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                          {swap.initiatorShift && (
+                          {swap.fromAssignment && (
                             <span>
-                              Your shift: {formatShiftTime(swap.initiatorShift)}
-                            </span>
-                          )}
-                          {swap.targetShift && (
-                            <span className="block">
-                              Their shift: {formatShiftTime(swap.targetShift)}
+                              Your shift: {formatShiftTime(swap.fromAssignment)}
                             </span>
                           )}
                         </div>
@@ -375,30 +364,20 @@ export default function SwapsPage() {
                     <div className="flex items-start gap-4">
                       <Avatar
                         size="sm"
-                        fallback={swap.initiator?.name?.charAt(0) ?? "?"}
+                        fallback={swap.requestedBy?.name?.charAt(0) ?? "?"}
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">
-                          {swap.initiator?.name ?? "Unknown User"}
+                          {swap.requestedBy?.name ?? "Unknown User"}
                         </p>
                         <div className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-                          {swap.initiatorShift && (
+                          {swap.fromAssignment && (
                             <span>
                               Their shift:{" "}
-                              {formatShiftTime(swap.initiatorShift)}
-                            </span>
-                          )}
-                          {swap.targetShift && (
-                            <span className="block">
-                              Your shift: {formatShiftTime(swap.targetShift)}
+                              {formatShiftTime(swap.fromAssignment)}
                             </span>
                           )}
                         </div>
-                        {swap.reason && (
-                          <p className="mt-1 text-xs italic text-zinc-400 dark:text-zinc-500">
-                            &ldquo;{swap.reason}&rdquo;
-                          </p>
-                        )}
                         <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                           Requested{" "}
                           {timezone.formatUserTime(
@@ -474,12 +453,6 @@ export default function SwapsPage() {
                         )}
                       </div>
                     )}
-
-                    {swap.status === "REJECTED" && swap.rejectionReason && (
-                      <p className="mt-2 pl-12 text-xs text-red-500">
-                        Reason: {swap.rejectionReason}
-                      </p>
-                    )}
                   </div>
                 ))}
               </div>
@@ -517,9 +490,9 @@ export default function SwapsPage() {
                     <option value="">Select a shift...</option>
                     {myShifts
                       .filter((s) => s.status === "SCHEDULED")
-                      .map((assignment) => (
-                        <option key={assignment.id} value={assignment.id}>
-                          {formatShiftLabel(assignment)}
+                      .map((shift) => (
+                        <option key={shift.id} value={shift.id}>
+                          {formatShiftLabel(shift)}
                         </option>
                       ))}
                   </select>
@@ -580,9 +553,9 @@ export default function SwapsPage() {
                     <option value="">Select a shift...</option>
                     {targetShifts
                       .filter((s) => s.status === "SCHEDULED")
-                      .map((assignment) => (
-                        <option key={assignment.id} value={assignment.id}>
-                          {formatShiftLabel(assignment)}
+                      .map((shift) => (
+                        <option key={shift.id} value={shift.id}>
+                          {formatShiftLabel(shift)}
                         </option>
                       ))}
                   </select>

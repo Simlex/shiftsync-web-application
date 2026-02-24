@@ -16,8 +16,10 @@ import {
 import { api } from "@/lib/api-client";
 import { timezone } from "@/lib/timezone";
 import { useAuth } from "@/contexts/auth-context";
+import { useNotifications } from "@/hooks/notifications";
+import { getShiftStatusVariant, getShiftStatusLabel } from "@/lib/shift-status";
 import { DATE_FORMATS } from "@/constants";
-import { cn, extractData } from "@/lib/utils";
+import { extractData } from "@/lib/utils";
 import {
   Card,
   CardHeader,
@@ -33,12 +35,7 @@ import {
   StatsCard,
   StatsCardSkeleton,
 } from "@/components/dashboard/stats-card";
-import type {
-  ShiftAssignment,
-  SwapRequest,
-  DropRequest,
-  Notification,
-} from "@/types";
+import type { SwapRequest, DropRequest, Shift } from "@/types";
 
 export default function StaffDashboardPage() {
   const { user } = useAuth();
@@ -53,7 +50,7 @@ export default function StaffDashboardPage() {
       const res = await api.shifts.getShifts({
         startDate: DateTime.now().toUTC().toISO() ?? undefined,
       });
-      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
+      return res.data as { data: Shift[] } | Shift[];
     },
     retry: false,
   });
@@ -76,6 +73,12 @@ export default function StaffDashboardPage() {
     retry: false,
   });
 
+  const { data: notificationsData, isLoading: notificationsLoading } =
+    useNotifications({
+      limit: 5,
+      read: false,
+    });
+
   const weekStart = now.startOf("week").toUTC().toISO() ?? "";
   const weekEnd = now.endOf("week").toUTC().toISO() ?? "";
 
@@ -86,7 +89,7 @@ export default function StaffDashboardPage() {
         startDate: weekStart,
         endDate: weekEnd,
       });
-      return res.data as { data: ShiftAssignment[] } | ShiftAssignment[];
+      return res.data as { data: Shift[] } | Shift[];
     },
     enabled: !!weekStart && !!weekEnd,
     retry: false,
@@ -96,30 +99,24 @@ export default function StaffDashboardPage() {
   const swaps = extractData(swapsData);
   const drops = extractData(dropsData);
   const weekShifts = extractData(weekShiftsData);
+  const notifications = extractData(notificationsData);
 
   const hoursThisWeek = useMemo(() => {
     return weekShifts.reduce((total, assignment) => {
-      const start = DateTime.fromISO(assignment.shift.startTime);
-      const end = DateTime.fromISO(assignment.shift.endTime);
+      const start = DateTime.fromISO(assignment.startTime);
+      const end = DateTime.fromISO(assignment.endTime);
       return total + end.diff(start).as("hours");
     }, 0);
   }, [weekShifts]);
 
   const upcomingShifts = shifts.slice(0, 5);
-  const isLoading = shiftsLoading || swapsLoading || dropsLoading || weekShiftsLoading;
 
-  const statusVariant = (status: string) => {
-    switch (status) {
-      case "SCHEDULED":
-        return "default" as const;
-      case "COMPLETED":
-        return "success" as const;
-      case "CANCELLED":
-        return "destructive" as const;
-      default:
-        return "secondary" as const;
-    }
-  };
+  const isLoading =
+    shiftsLoading ||
+    swapsLoading ||
+    dropsLoading ||
+    weekShiftsLoading ||
+    notificationsLoading;
 
   return (
     <div className="space-y-6">
@@ -216,35 +213,31 @@ export default function StaffDashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {upcomingShifts.map((assignment, i) => {
+                  {upcomingShifts.map((shift, i) => {
                     const start = timezone.formatUserTime(
-                      assignment.shift.startTime,
+                      shift.startTime,
                       userTimezone,
                       DATE_FORMATS.DISPLAY_DATETIME,
                     );
                     const end = timezone.formatUserTime(
-                      assignment.shift.endTime,
+                      shift.endTime,
                       userTimezone,
                       DATE_FORMATS.TIME_ONLY,
                     );
+                    const status = shift.status || "DRAFT"; // Use API status or fallback
+
                     return (
-                      <div key={assignment.id}>
+                      <div key={shift.id}>
                         <button className="flex w-full items-center gap-4 rounded-lg p-3 text-left transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900">
                           <div className="flex h-12 w-12 flex-col items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
                             <span className="text-xs font-medium leading-none">
                               {timezone
-                                .toUserTime(
-                                  assignment.shift.startTime,
-                                  userTimezone,
-                                )
+                                .toUserTime(shift.startTime, userTimezone)
                                 .toFormat("MMM")}
                             </span>
                             <span className="text-lg font-bold leading-none">
                               {timezone
-                                .toUserTime(
-                                  assignment.shift.startTime,
-                                  userTimezone,
-                                )
+                                .toUserTime(shift.startTime, userTimezone)
                                 .toFormat("d")}
                             </span>
                           </div>
@@ -253,12 +246,11 @@ export default function StaffDashboardPage() {
                               {start} – {end}
                             </p>
                             <p className="truncate text-sm text-zinc-500 dark:text-zinc-400">
-                              {assignment.shift.location?.name ??
-                                "Unknown Location"}
+                              {shift.location?.name ?? "Unknown Location"}
                             </p>
                           </div>
-                          <Badge variant={statusVariant(assignment.status)}>
-                            {assignment.status}
+                          <Badge variant={getShiftStatusVariant(status)}>
+                            {getShiftStatusLabel(status)}
                           </Badge>
                         </button>
                         {i < upcomingShifts.length - 1 && <Separator />}
@@ -309,7 +301,7 @@ export default function StaffDashboardPage() {
                       <Badge variant="secondary">Swap</Badge>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium">
-                          Swap with {swap.targetUser?.name ?? "another staff"}
+                          Swap with {swap.toUser?.name ?? "another staff"}
                         </p>
                         <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {timezone.formatUserTime(
@@ -355,12 +347,57 @@ export default function StaffDashboardPage() {
               <CardDescription>Recent updates</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col items-center justify-center py-6 text-center">
-                <Bell className="mb-2 h-8 w-8 text-zinc-300 dark:text-zinc-600" />
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  No new notifications
-                </p>
-              </div>
+              {notificationsLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-start gap-3">
+                      <Skeleton className="h-8 w-8 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center">
+                  <Bell className="mb-2 h-8 w-8 text-zinc-300 dark:text-zinc-600" />
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    No new notifications
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {notifications.slice(0, 5).map((notification) => (
+                    <div
+                      key={notification.id}
+                      className="flex items-start gap-3 rounded-lg p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                        <Bell className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">
+                          {notification.title}
+                        </p>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+                          {timezone.formatUserTime(
+                            notification.createdAt,
+                            userTimezone,
+                            "MMM d, h:mm a",
+                          )}
+                        </p>
+                      </div>
+                      {!notification.read && (
+                        <div className="h-2 w-2 rounded-full bg-blue-500 shrink-0 mt-2" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
