@@ -7,6 +7,7 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/auth-context";
 import { UIProvider } from "@/contexts/ui-context";
 import { RealtimeProvider } from "@/contexts/realtime-context";
+import { useKeepAlive } from "@/app/client-hooks";
 
 // Create a client
 const queryClient = new QueryClient({
@@ -22,6 +23,11 @@ const queryClient = new QueryClient({
   },
 });
 
+function KeepAlive() {
+  useKeepAlive();
+  return null;
+}
+
 export function Providers({ children }: { children: ReactNode }) {
   return (
     <SessionProvider>
@@ -29,6 +35,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <AuthProvider>
           <UIProvider>
             <RealtimeProvider>
+              <KeepAlive />
               {children}
               <Toaster richColors position="top-right" />
             </RealtimeProvider>
